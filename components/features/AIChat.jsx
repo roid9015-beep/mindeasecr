@@ -1,269 +1,438 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// FILE: components/features/AIChat.jsx
+// REPLACE: Borra todo el contenido del archivo actual y pega esto completo.
+// ─────────────────────────────────────────────────────────────────────────────
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useVoice } from "@/hooks/useVoice";
-import VoiceButton from "@/components/ui/VoiceButton";
-import Spinner from "@/components/ui/Spinner";
-import { REGIONAL_VOICES } from "@/lib/constants";
-import { formatTime, getSessionStatus } from "@/lib/utils";
 
+import { useState, useEffect, useRef, useCallback } from "react";
+import { getAuth } from "firebase/auth";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// Indicador de escritura animado
 function TypingIndicator() {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 0" }}>
-      <div style={{ width:36, height:36, borderRadius:"50%", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>🌿</div>
-      <div className="bubble-ai" style={{ padding:"12px 18px" }}>
-        <div style={{ display:"flex", gap:6 }}>
-          {[0,0.15,0.3].map((d,i) => (
-            <div key={i} style={{ width:8, height:8, borderRadius:"50%", background:"var(--accent)", animation:`typing 1.2s ease-in-out ${d}s infinite` }} />
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0" }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+        background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+      }}>🌿</div>
+      <div style={{
+        padding: "12px 18px", background: "var(--bg-card,rgba(255,255,255,0.06))",
+        border: "1px solid var(--border,rgba(255,255,255,0.1))",
+        borderRadius: "18px 18px 18px 4px",
+      }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {[0, 0.2, 0.4].map((delay, i) => (
+            <div key={i} style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: "var(--accent,#6366f1)",
+              animation: `mindease-typing 1.2s ease-in-out ${delay}s infinite`,
+            }} />
           ))}
         </div>
       </div>
+      <style>{`
+        @keyframes mindease-typing {
+          0%,60%,100% { transform: translateY(0); opacity: .4; }
+          30%          { transform: translateY(-8px); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
 
-// ─── Topic Picker (shown to free users before starting) ───────────────────────
-function TopicPicker({ t, locale, onStart }) {
-  const [custom, setCustom] = useState("");
-  const suggestions = {
-    en: ["Work stress & burnout","Anxiety & overthinking","Relationship struggles","Feeling lonely","Low motivation","Grief or loss"],
-    es: ["Estrés laboral y agotamiento","Ansiedad y pensamientos en bucle","Problemas de relaciones","Sentirse solo/a","Poca motivación","Duelo o pérdida"],
-    pt: ["Estresse no trabalho","Ansiedade e pensamentos em loop","Problemas de relacionamento","Solidão","Falta de motivação","Luto ou perda"],
-  };
-  const topics = suggestions[locale] || suggestions.en;
-
-  return (
-    <div style={{ animation:"fadeUp 0.4s ease", padding:"8px 0" }}>
-      <div style={{ textAlign:"center", marginBottom:28 }}>
-        <div style={{ fontSize:44, marginBottom:12 }}>🌿</div>
-        <h3 style={{ fontFamily:"var(--font-main)", fontSize:20, fontWeight:700, marginBottom:8 }}>
-          {locale==="es" ? "¿Sobre qué quieres hablar hoy?" : locale==="pt" ? "Sobre o que você quer conversar hoje?" : "What would you like to talk about?"}
-        </h3>
-        <p style={{ color:"var(--text-muted)", fontSize:13, lineHeight:1.6, maxWidth:320, margin:"0 auto" }}>
-          {locale==="es"
-            ? "Tu sesión gratuita mensual te da una conversación profunda y enfocada sobre un tema."
-            : locale==="pt"
-            ? "Sua sessão gratuita mensal oferece uma conversa profunda e focada sobre um tema."
-            : "Your free monthly session gives you one deep, focused conversation on a topic of your choice."}
-        </p>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-        {topics.map((topic) => (
-          <button key={topic} onClick={() => onStart(topic)}
-            style={{ padding:"12px 14px", borderRadius:12, border:"1px solid var(--border)",
-              background:"var(--bg-card)", color:"var(--text-secondary)", fontSize:13,
-              cursor:"pointer", textAlign:"left", transition:"all 0.2s", fontFamily:"var(--font-body)", lineHeight:1.4 }}
-            onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--text-primary)"}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.color="var(--text-secondary)"}}>
-            {topic}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ display:"flex", gap:8 }}>
-        <input className="custom-input" placeholder={locale==="es"?"Escribe tu propio tema...":locale==="pt"?"Escreva seu próprio tema...":"Write your own topic..."}
-          value={custom} onChange={e=>setCustom(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&custom.trim()&&onStart(custom.trim())} />
-        <button className="btn btn-primary" style={{ flexShrink:0, padding:"12px 18px" }}
-          onClick={()=>custom.trim()&&onStart(custom.trim())} disabled={!custom.trim()}>→</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Session limit wall (free plan exhausted) ─────────────────────────────────
-function SessionWall({ t, locale, sessionStatus, onUpgrade }) {
-  return (
-    <div style={{ textAlign:"center", padding:"40px 20px", animation:"fadeUp 0.4s ease" }}>
-      <div style={{ fontSize:48, marginBottom:16 }}>🌙</div>
-      <h3 style={{ fontFamily:"var(--font-main)", fontSize:20, fontWeight:700, marginBottom:10 }}>
-        {locale==="es" ? "Tu sesión de este mes ha terminado"
-          : locale==="pt" ? "Sua sessão deste mês acabou"
-          : "Your session for this month is complete"}
-      </h3>
-      <p style={{ color:"var(--text-secondary)", fontSize:14, lineHeight:1.7, maxWidth:320, margin:"0 auto 8px" }}>
-        {locale==="es"
-          ? `El plan gratuito incluye 1 conversación profunda por mes. Tu próxima sesión se abre el ${sessionStatus.resetDate}.`
-          : locale==="pt"
-          ? `O plano gratuito inclui 1 conversa profunda por mês. Sua próxima sessão abre em ${sessionStatus.resetDate}.`
-          : `The free plan includes 1 deep conversation per month. Your next session opens on ${sessionStatus.resetDate}.`}
-      </p>
-      <p style={{ color:"var(--text-muted)", fontSize:12, marginBottom:28 }}>
-        {locale==="es" ? "Las herramientas de respiración y anclaje siguen disponibles."
-          : locale==="pt" ? "As ferramentas de respiração e ancoragem continuam disponíveis."
-          : "Breathing and grounding tools are always available."}
-      </p>
-
-      <div style={{ display:"flex", flexDirection:"column", gap:10, maxWidth:280, margin:"0 auto" }}>
-        <button className="btn btn-primary" style={{ padding:"14px", fontSize:15 }} onClick={onUpgrade}>
-          ⭐ {locale==="es" ? "Actualizar a Premium — $5/mes"
-            : locale==="pt" ? "Ir para Premium — $5/mês"
-            : "Upgrade to Premium — $5/month"}
-        </button>
-        <div style={{ fontSize:12, color:"var(--text-muted)" }}>
-          {locale==="es" ? "Conversaciones ilimitadas + memoria emocional"
-            : locale==="pt" ? "Conversas ilimitadas + memória emocional"
-            : "Unlimited conversations + emotional memory"}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Chat ─────────────────────────────────────────────────────────────────
-export default function AIChat({ t, locale, countryInfo, user, messages, setMessages, voiceKey, voiceEnabled, sessionLog, startSession, onUpgrade }) {
-  const [input,   setInput]   = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
-  const [activeTopic, setActiveTopic] = useState(null);
+// ── Componente principal ──────────────────────────────────────────────────────
+export default function AIChat({
+  // Props opcionales para integración con el resto del app
+  user,
+  locale = "es",
+  voiceEnabled = false,
+}) {
+  // ── Estado — siempre inicializado como array ──────────────────────────────
+  const [messages,  setMessages]  = useState([]); // NUNCA null/undefined
+  const [input,     setInput]     = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error,     setError]     = useState("");
 
   const endRef   = useRef(null);
   const inputRef = useRef(null);
-  const { speak, stop, speaking } = useVoice(voiceKey, voiceEnabled);
 
-  const sessionStatus = getSessionStatus(sessionLog);
-  const isPremium = user?.isPremium;
+  // ── Scroll automático cuando llega un mensaje ─────────────────────────────
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, loading]);
+  // ── Foco en input al cargar ───────────────────────────────────────────────
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
-  const handleStartSession = useCallback((topic) => {
-    setActiveTopic(topic);
-    startSession(topic);
-    // Seed first AI message acknowledging the topic
-    const seedMsg = {
-      role: "assistant",
-      content: locale==="es"
-        ? `Me alegra que estés aquí. Vamos a explorar juntos "${topic}" — cuéntame, ¿qué está pasando?`
-        : locale==="pt"
-        ? `Fico feliz que você esteja aqui. Vamos explorar juntos "${topic}" — me conte, o que está acontecendo?`
-        : `I'm glad you're here. Let's explore "${topic}" together — tell me, what's been going on?`,
-      timestamp: Date.now(),
-    };
-    setMessages([seedMsg]);
-  }, [locale, startSession, setMessages]);
-
-  const sendMessage = async () => {
-    const text = input.trim();
-    if (!text || loading) return;
-    setError("");
-    const userMsg = { role:"user", content:text, timestamp:Date.now() };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    setInput("");
-    setLoading(true);
+  // ── Obtener token de Firebase fresco ─────────────────────────────────────
+  const getFirebaseToken = useCallback(async () => {
     try {
-      const res = await fetch("/api/chat", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({
-          messages: newMessages.slice(-16).map(m=>({ role:m.role, content:m.content })),
-          locale,
-          countryInfo,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      const aiMsg = { role:"assistant", content:data.content, timestamp:Date.now() };
-      setMessages(prev=>[...prev, aiMsg]);
-      if (voiceEnabled) setTimeout(()=>speak(data.content), 300);
-    } catch {
-      const fallback = locale==="es" ? "Tengo problemas de conexión. Respira despacio — aquí sigo. 🌿"
-        : locale==="pt" ? "Estou com problemas de conexão. Respire devagar — ainda estou aqui. 🌿"
-        : "Having trouble connecting. Take a slow breath — I'm still here. 🌿";
-      setMessages(prev=>[...prev, { role:"assistant", content:fallback, timestamp:Date.now() }]);
-    } finally {
-      setLoading(false);
-      setTimeout(()=>inputRef.current?.focus(), 100);
+      const auth = getAuth();
+      const token = await auth.currentUser?.getIdToken(true); // true = fuerza refresh
+      return token ?? null;
+    } catch (e) {
+      console.warn("[AIChat] No se pudo obtener token Firebase:", e?.message);
+      return null;
     }
+  }, []);
+
+  // ── Enviar mensaje ────────────────────────────────────────────────────────
+  const sendMessage = useCallback(async () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
+
+    setError("");
+
+    // 1. Agregar mensaje del usuario al estado local
+    const userMsg = { role: "user", content: text, timestamp: Date.now() };
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+    setInput("");
+    setIsLoading(true);
+
+    try {
+      // 2. Token de Firebase (si no hay usuario logueado, token = null)
+      const token = await getFirebaseToken();
+
+      // 3. Preparar payload — solo roles válidos para Anthropic
+      const payload = updatedMessages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      // 4. Fetch a la API
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ messages: payload }),
+      });
+
+      // 5. Parsear respuesta — blindado contra respuestas no-JSON
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        data = { reply: null, error: "invalid_server_response" };
+      }
+
+      // 6. Verificar que data sea un objeto válido
+      if (!data || typeof data !== "object") {
+        data = { reply: null, error: "malformed_response" };
+      }
+
+      // 7. Si hay reply válido, agregar al chat
+      if (data.reply && typeof data.reply === "string" && data.reply.trim()) {
+        const aiMsg = {
+          role:      "assistant",
+          content:   data.reply.trim(),
+          timestamp: Date.now(),
+        };
+        setMessages((prev) =>
+          Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]
+        );
+      } else {
+        // Error controlado — mostrar mensaje amigable sin romper el array
+        const code = data.error ?? "unknown_error";
+        setError(getFriendlyError(code, locale));
+
+        // Si fue 401, agregar aviso en el chat
+        if (response.status === 401) {
+          setMessages((prev) => Array.isArray(prev) ? [...prev, {
+            role: "assistant",
+            content: locale === "es"
+              ? "Necesitas iniciar sesión para continuar la conversación. 🔐"
+              : "You need to be logged in to continue. 🔐",
+            timestamp: Date.now(),
+            isSystem: true,
+          }] : []);
+        }
+      }
+
+    } catch (networkErr) {
+      console.error("[AIChat] Network error:", networkErr?.message);
+      setError(getFriendlyError("network_error", locale));
+    } finally {
+      setIsLoading(false);
+      // Pequeño delay antes de reenfocar para que el scroll termine
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [input, isLoading, messages, getFirebaseToken, locale]);
+
+  // ── Enter para enviar (Shift+Enter = nueva línea) ─────────────────────────
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }, [sendMessage]);
+
+  // ── Mensajes de bienvenida por locale ────────────────────────────────────
+  const placeholders = {
+    es: "Cuéntame cómo te sientes hoy...",
+    pt: "Me conta como você está se sentindo...",
+    en: "Tell me how you're feeling today...",
+  };
+  const placeholder = placeholders[locale] ?? placeholders.es;
+
+  const emptyTitles = {
+    es: "Estoy aquí para escucharte",
+    pt: "Estou aqui para ouvir você",
+    en: "I'm here to listen",
+  };
+  const emptyDesc = {
+    es: "Este es un espacio seguro. Comparte lo que tengas en mente, sin filtros ni juicios.",
+    pt: "Este é um espaço seguro. Compartilhe o que estiver na sua mente.",
+    en: "This is a safe space. Share whatever is on your mind, without filters or judgment.",
   };
 
-  // ── Render states ──────────────────────────────────────────────────────────
-
-  // 1. Free user, no session this month → topic picker
-  if (!isPremium && !activeTopic && sessionStatus.canChat) {
-    return <TopicPicker t={t} locale={locale} onStart={handleStartSession} />;
-  }
-
-  // 2. Free user, session exhausted → wall
-  if (!isPremium && !sessionStatus.canChat && !activeTopic) {
-    return <SessionWall t={t} locale={locale} sessionStatus={sessionStatus} onUpgrade={onUpgrade} />;
-  }
-
-  // 3. Chat interface (premium OR active free session)
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 140px)", animation:"fadeUp 0.4s ease" }}>
+    <div style={{
+      display: "flex", flexDirection: "column",
+      height: "calc(100vh - 140px)",
+      animation: "fadeUp 0.4s ease",
+    }}>
 
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, paddingBottom:14, borderBottom:"1px solid var(--border)", marginBottom:14 }}>
-        <div style={{ width:42, height:42, borderRadius:"50%", background:"linear-gradient(135deg,#6366f1,#8b5cf6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🌿</div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontFamily:"var(--font-main)", fontWeight:600 }}>MindEase</div>
-          {activeTopic && !isPremium && (
-            <div style={{ fontSize:11, color:"var(--accent-3)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-              🎯 {activeTopic}
-            </div>
-          )}
-          {isPremium && (
-            <div style={{ fontSize:11, color:"var(--success)", display:"flex", alignItems:"center", gap:4 }}>
-              <div style={{ width:6, height:6, borderRadius:"50%", background:"var(--success)" }} />
-              {t.hereForYou}
-            </div>
-          )}
-        </div>
-        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-          {voiceEnabled && (
-            <div style={{ padding:"3px 9px", background:"rgba(6,182,212,0.1)", border:"1px solid rgba(6,182,212,0.2)", borderRadius:20, fontSize:10, color:"var(--accent-3)" }}>
-              🔊 {REGIONAL_VOICES[voiceKey]?.name || voiceKey}
-            </div>
-          )}
-          {!isPremium && activeTopic && (
-            <div style={{ padding:"3px 10px", background:"var(--accent-soft)", border:"1px solid rgba(99,102,241,0.3)", borderRadius:20, fontSize:10, color:"var(--accent)", fontFamily:"var(--font-main)" }}>
-              {locale==="es"?"Sesión activa":locale==="pt"?"Sessão ativa":"Active session"}
-            </div>
-          )}
+      {/* ── Header del chat ── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12,
+        paddingBottom: 14, borderBottom: "1px solid var(--border,rgba(255,255,255,0.08))",
+        marginBottom: 14,
+      }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+          background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+        }}>🌿</div>
+        <div>
+          <div style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontWeight: 600, fontSize: 15 }}>
+            MindEase
+          </div>
+          <div style={{ fontSize: 11, color: "#10b981", display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981" }} />
+            {locale === "es" ? "Aquí para ti" : locale === "pt" ? "Aqui para você" : "Here for you"}
+          </div>
         </div>
       </div>
 
-      {/* Messages */}
-      <div style={{ flex:1, overflowY:"auto" }}>
-        {messages.map((msg,i) => (
-          <div key={i} style={{ display:"flex", justifyContent:msg.role==="user"?"flex-end":"flex-start", alignItems:"flex-end", gap:8, marginBottom:12 }}>
-            {msg.role!=="user" && (
-              <div style={{ width:32, height:32, borderRadius:"50%", flexShrink:0, background:"linear-gradient(135deg,#6366f1,#8b5cf6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🌿</div>
-            )}
-            <div style={{ maxWidth:"76%", display:"flex", flexDirection:"column", gap:4, alignItems:msg.role==="user"?"flex-end":"flex-start" }}>
-              <div className={msg.role==="user"?"bubble-user":"bubble-ai"} style={{ padding:"11px 15px", fontSize:14, lineHeight:1.65 }}>
-                {msg.content}
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                {msg.timestamp && <span style={{ fontSize:10, color:"var(--text-muted)" }}>{formatTime(msg.timestamp)}</span>}
-                {msg.role==="assistant" && voiceEnabled && (
-                  <VoiceButton text={msg.content} speak={speak} stop={stop} speaking={speaking} t={t} />
+      {/* ── Área de mensajes ── */}
+      <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
+
+        {/* Estado vacío */}
+        {/* ⚠️ BLINDAJE: Array.isArray() antes de .length y .map() */}
+        {Array.isArray(messages) && messages.length === 0 && (
+          <div style={{ textAlign: "center", padding: "32px 16px" }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🌿</div>
+            <h3 style={{
+              fontFamily: "var(--font-main,'Sora',sans-serif)",
+              fontWeight: 600, fontSize: 18, marginBottom: 8,
+              color: "var(--text-primary,#f0f1fa)",
+            }}>
+              {emptyTitles[locale] ?? emptyTitles.es}
+            </h3>
+            <p style={{ color: "var(--text-muted,#4a4d64)", fontSize: 14, lineHeight: 1.6, maxWidth: 300, margin: "0 auto" }}>
+              {emptyDesc[locale] ?? emptyDesc.es}
+            </p>
+          </div>
+        )}
+
+        {/* Lista de mensajes — BLINDADA con Array.isArray */}
+        {Array.isArray(messages) && messages.map((msg, index) => {
+          // Validar que cada msg sea un objeto con role y content válidos
+          if (!msg || typeof msg !== "object") return null;
+          if (msg.role !== "user" && msg.role !== "assistant") return null;
+          if (typeof msg.content !== "string") return null;
+
+          const isUser = msg.role === "user";
+
+          return (
+            <div
+              key={`${msg.timestamp ?? index}-${index}`}
+              style={{
+                display: "flex",
+                justifyContent: isUser ? "flex-end" : "flex-start",
+                alignItems: "flex-end",
+                gap: 8,
+                marginBottom: 14,
+              }}
+            >
+              {/* Avatar IA */}
+              {!isUser && (
+                <div style={{
+                  width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+                  background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15,
+                }}>🌿</div>
+              )}
+
+              <div style={{
+                maxWidth: "76%",
+                display: "flex", flexDirection: "column",
+                alignItems: isUser ? "flex-end" : "flex-start",
+                gap: 4,
+              }}>
+                {/* Burbuja */}
+                <div style={{
+                  padding: "11px 16px",
+                  fontSize: 14, lineHeight: 1.65,
+                  ...(isUser ? {
+                    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                    color: "white",
+                    borderRadius: "18px 18px 4px 18px",
+                  } : {
+                    background: msg.isSystem
+                      ? "rgba(245,158,11,0.12)"
+                      : "var(--bg-card,rgba(255,255,255,0.05))",
+                    border: `1px solid ${msg.isSystem ? "rgba(245,158,11,0.3)" : "var(--border,rgba(255,255,255,0.08))"}`,
+                    color: "var(--text-primary,#f0f1fa)",
+                    borderRadius: "18px 18px 18px 4px",
+                  }),
+                }}>
+                  {msg.content}
+                </div>
+
+                {/* Timestamp */}
+                {msg.timestamp && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted,#4a4d64)", padding: "0 2px" }}>
+                    {formatTime(msg.timestamp)}
+                  </span>
                 )}
               </div>
             </div>
-          </div>
-        ))}
-        {loading && <TypingIndicator />}
+          );
+        })}
+
+        {/* Indicador "Pensando..." */}
+        {isLoading && <TypingIndicator />}
+
+        {/* Anchor para scroll automático */}
         <div ref={endRef} />
       </div>
 
+      {/* ── Error inline ── */}
       {error && (
-        <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:9, padding:"9px 13px", fontSize:13, color:"#f87171", marginTop:8 }}>{error}</div>
+        <div style={{
+          background: "rgba(239,68,68,0.1)",
+          border: "1px solid rgba(239,68,68,0.25)",
+          borderRadius: 10, padding: "9px 14px",
+          fontSize: 13, color: "#f87171", marginTop: 8,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+        }}>
+          <span>{error}</span>
+          <button onClick={() => setError("")} style={{
+            background: "none", border: "none", color: "#f87171",
+            cursor: "pointer", fontSize: 18, lineHeight: 1, flexShrink: 0,
+          }}>×</button>
+        </div>
       )}
 
-      {/* Input */}
-      <div style={{ display:"flex", gap:9, marginTop:10, paddingTop:10, borderTop:"1px solid var(--border)" }}>
-        <textarea ref={inputRef} className="custom-input" placeholder={t.chatPlaceholder}
-          value={input} onChange={e=>setInput(e.target.value)}
-          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();} }}
-          rows={1} style={{ resize:"none", flex:1, maxHeight:120 }} />
-        <button className="btn btn-primary" onClick={sendMessage} disabled={loading||!input.trim()}
-          style={{ padding:"12px 18px", flexShrink:0 }}>
-          {loading ? <Spinner size={16} /> : "→"}
+      {/* ── Área de input ── */}
+      <div style={{
+        display: "flex", gap: 10, marginTop: 12,
+        paddingTop: 12, borderTop: "1px solid var(--border,rgba(255,255,255,0.08))",
+      }}>
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          rows={1}
+          disabled={isLoading}
+          style={{
+            flex: 1, resize: "none", maxHeight: 120,
+            overflow: input.length > 100 ? "auto" : "hidden",
+            background: "var(--bg-card,rgba(255,255,255,0.05))",
+            border: "1px solid var(--border,rgba(255,255,255,0.1))",
+            borderRadius: 10, color: "var(--text-primary,#f0f1fa)",
+            fontFamily: "var(--font-body,'DM Sans',sans-serif)", fontSize: 15,
+            padding: "12px 16px", outline: "none", transition: "border-color .2s",
+            opacity: isLoading ? 0.6 : 1,
+          }}
+          onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
+          onBlur={(e)  => (e.target.style.borderColor = "var(--border,rgba(255,255,255,0.1))")}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={isLoading || !input.trim()}
+          style={{
+            padding: "12px 20px", borderRadius: 10, border: "none",
+            background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+            color: "white", cursor: "pointer", flexShrink: 0,
+            transition: "all .2s", fontSize: 18,
+            opacity: (isLoading || !input.trim()) ? 0.5 : 1,
+            transform: "none",
+          }}
+          onMouseEnter={(e) => { if (!isLoading && input.trim()) e.currentTarget.style.transform = "translateY(-2px)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}
+        >
+          {isLoading ? (
+            <div style={{
+              width: 18, height: 18, borderRadius: "50%",
+              border: "2px solid rgba(255,255,255,0.3)",
+              borderTopColor: "white",
+              animation: "spin .7s linear infinite",
+            }} />
+          ) : "→"}
         </button>
       </div>
-      <p style={{ fontSize:10, color:"var(--text-muted)", textAlign:"center", marginTop:6 }}>{t.chatDisclaimer}</p>
+
+      {/* Disclaimer */}
+      <p style={{ fontSize: 10, color: "var(--text-muted,#4a4d64)", textAlign: "center", marginTop: 8 }}>
+        {locale === "es"
+          ? "MindEase es un acompañante IA, no reemplaza la terapia profesional."
+          : locale === "pt"
+          ? "MindEase é um acompanhante de IA, não substitui a terapia profissional."
+          : "MindEase is an AI companion, not a replacement for professional therapy."}
+      </p>
+
+      {/* Keyframes globales para este componente */}
+      <style>{`
+        @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes spin   { to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
+}
+
+// ── Helper: mensajes de error amigables por código ────────────────────────────
+function getFriendlyError(code, locale = "es") {
+  const errors = {
+    es: {
+      unauthorized_no_token:     "Necesitas iniciar sesión para chatear. 🔐",
+      unauthorized_invalid_token:"Tu sesión expiró, vuelve a iniciar sesión. 🔐",
+      invalid_json_body:         "Hubo un error al enviar el mensaje. Intenta de nuevo.",
+      no_valid_messages:         "El mensaje está vacío o no es válido.",
+      empty_response_from_ai:    "La IA no respondió. Intenta de nuevo.",
+      server_error:              "Error interno. Intenta en unos segundos.",
+      network_error:             "Sin conexión. Verifica tu internet.",
+      default:                   "Algo salió mal. Intenta de nuevo.",
+    },
+    pt: {
+      unauthorized_no_token:     "Você precisa fazer login para conversar. 🔐",
+      unauthorized_invalid_token:"Sua sessão expirou, faça login novamente. 🔐",
+      network_error:             "Sem conexão. Verifique sua internet.",
+      default:                   "Algo deu errado. Tente novamente.",
+    },
+    en: {
+      unauthorized_no_token:     "You need to log in to chat. 🔐",
+      unauthorized_invalid_token:"Your session expired. Please log in again. 🔐",
+      network_error:             "No connection. Check your internet.",
+      default:                   "Something went wrong. Try again.",
+    },
+  };
+  const map = errors[locale] ?? errors.es;
+  return map[code] ?? map.default;
 }
