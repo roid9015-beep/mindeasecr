@@ -1,76 +1,66 @@
-// FILE: app/api/chat/route.js
-import { NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 const SYSTEM_PROMPT = `Actúas como un psicólogo profesional, empático, reflexivo y ético para MindEase AI.
 Ofreces respuestas orientadas al bienestar, utilizando la escucha activa y técnicas de psicología cognitivo-conductual.
 Validas emociones antes de ofrecer perspectiva. Nunca minimizas lo que siente el usuario.
 Hablas en el idioma del usuario de forma natural y cálida.
-Si detectas ideaciones autolíticas severas o crisis extremas, recomienda con cuidado buscar ayuda profesional.
+Si detectas ideaciones autolíticas severas o crisis extremas, recomienda con cuidado buscar ayuda profesional
+o líneas de atención: en México 800-290-0024, en España 024, en Argentina (011) 5275-1135.
 Recuerda siempre: NO eres un sustituto de la terapia profesional.`;
 
 export async function POST(request) {
+  const errorResponse = (msg, status = 500) =>
+    new Response(
+      JSON.stringify({ error: msg, content: null }),
+      { status, headers: { "Content-Type": "application/json" } }
+    );
+
   try {
-    // 1. Evitamos que fallas de JSON rompan el servidor
-    const body = await request.json().catch(() => null);
-    if (!body || !body.messages || !Array.isArray(body.messages)) {
-      return NextResponse.json({ error: "invalid_json_body", reply: null }, { status: 400 });
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse("invalid_json_body", 400);
     }
 
     const { messages } = body;
 
-    // 2. Limpieza estricta de mensajes para cumplir con el formato de Anthropic
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return errorResponse("messages_must_be_array", 400);
+    }
+
     const cleanMessages = messages
       .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
       .map((m) => ({ role: m.role, content: m.content.trim() }))
-      .slice(-16); // Limitamos el historial para optimizar tokens
+      .slice(-20);
 
     if (cleanMessages.length === 0) {
-      return NextResponse.json({ error: "no_valid_messages", reply: null }, { status: 400 });
+      return errorResponse("no_valid_messages", 400);
     }
 
-    // 3. Verificación de la API Key en el entorno de ejecución
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      console.error("[MindEase Backend] Error: ANTHROPIC_API_KEY no configurada en Vercel.");
-      return NextResponse.json({ error: "missing_api_key", reply: "Lo siento, tengo un problema de configuración interna. Por favor, verifica las variables de entorno." }, { status: 500 });
-    }
-
-    // 4. Petición directa vía HTTP Fetch (Garantiza compatibilidad total en Vercel)
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: cleanMessages,
-      }),
+    const response = await anthropic.messages.create({
+      model:      "claude-3-5-sonnet-20241022",
+      max_tokens: 1024,
+      system:     SYSTEM_PROMPT,
+      messages:   cleanMessages,
     });
 
-    const data = await response.json().catch(() => ({}));
+    const reply = response.content?.[0]?.text ?? "";
 
-    if (!response.ok) {
-      console.error("[Anthropic API Error Details]:", data);
-      return NextResponse.json({ 
-        error: "anthropic_api_rejected", 
-        reply: "En este momento no puedo procesar tu mensaje debido a un inconveniente con el proveedor de IA. Inténtalo de nuevo en unos instantes." 
-      }, { status: response.status });
-    }
+    if (!reply) return errorResponse("empty_response_from_ai", 502);
 
-    const reply = data.content?.[0]?.text ?? "";
-    if (!reply) {
-      return NextResponse.json({ error: "empty_response", reply: "No logré generar una respuesta. ¿Podrías repetirme lo que dijiste?" }, { status: 502 });
-    }
-
-    // 5. Respuesta exitosa con la estructura exacta que tu AIChat mapea
-    return NextResponse.json({ reply, error: null }, { status: 200 });
+    // Retornamos 'content' para que encaje perfectamente con tu interfaz
+    return new Response(
+      JSON.stringify({ content: reply, error: null }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
 
   } catch (err) {
-    console.error("[/api/chat] Error crítico en el servidor:", err);
-    return NextResponse.json({ error: "internal_server_error", reply: "Siento interrumpir nuestra conversación, pero ha ocurrido un error inesperado en mi servidor." }, { status: 500 });
+    console.error("[/api/chat] Error:", err?.message ?? err);
+    return errorResponse("anthropic_api_rejected", 200); // Mantenemos vivo el flujo para que el frontend lo ataje
   }
 }
