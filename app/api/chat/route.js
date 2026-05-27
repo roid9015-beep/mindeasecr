@@ -1,66 +1,76 @@
+import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { db } from "@/lib/firebaseAdmin"; // Asegúrate de tener configurado tu admin de Firebase
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const SYSTEM_PROMPT = `Actúas como un psicólogo profesional, empático, reflexivo y ético para MindEase AI.
-Ofreces respuestas orientadas al bienestar, utilizando la escucha activa y técnicas de psicología cognitivo-conductual.
-Validas emociones antes de ofrecer perspectiva. Nunca minimizas lo que siente el usuario.
-Hablas en el idioma del usuario de forma natural y cálida.
-Si detectas ideaciones autolíticas severas o crisis extremas, recomienda con cuidado buscar ayuda profesional
-o líneas de atención: en México 800-290-0024, en España 024, en Argentina (011) 5275-1135.
-Recuerda siempre: NO eres un sustituto de la terapia profesional.`;
-
-export async function POST(request) {
-  const errorResponse = (msg, status = 500) =>
-    new Response(
-      JSON.stringify({ error: msg, content: null }),
-      { status, headers: { "Content-Type": "application/json" } }
-    );
-
+export async function POST(req) {
   try {
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return errorResponse("invalid_json_body", 400);
+    const { messages, locale, countryInfo, userId } = await req.json();
+
+    if (!messages || !Array.isArray(messages)) {
+      return NextResponse.json({ error: "Messages are required" }, { status: 400 });
     }
 
-    const { messages } = body;
+    // 1. VALIDACIÓN EN PRODUCCIÓN: Control de Créditos Gratuitos / Premium
+    if (userId) {
+      const userRef = db.collection("users").doc(userId);
+      const userDoc = await userRef.get();
 
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return errorResponse("messages_must_be_array", 400);
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        
+        // Si no es Premium, verificamos su uso mensual
+        if (!userData.isPremium) {
+          const currentMonth = new Date().toISOString().slice(0, 7); // Ejemplo: "2026-05"
+          const sessionLogRef = db.collection("users").doc(userId).collection("sessionLogs").doc(currentMonth);
+          const sessionLogDoc = await sessionLogRef.get();
+
+          if (sessionLogDoc.exists) {
+            const logData = sessionLogDoc.data();
+            // Si ya consumió su sesión gratuita mensual
+            if (logData.usedSessions >= 1) {
+              return NextResponse.json({ error: "free_limit_reached" }, { status: 403 });
+            }
+          }
+        }
+      }
     }
 
-    const cleanMessages = messages
-      .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim())
-      .map((m) => ({ role: m.role, content: m.content.trim() }))
-      .slice(-20);
-
-    if (cleanMessages.length === 0) {
-      return errorResponse("no_valid_messages", 400);
-    }
-
+    // 2. LLAMADA A LA API DE ANTHROPIC CLAUDE
     const response = await anthropic.messages.create({
-      model:      "claude-3-5-sonnet-20241022",
+      model: "claude-3-5-sonnet-20241022", // O el modelo que estés usando
       max_tokens: 1024,
-      system:     SYSTEM_PROMPT,
-      messages:   cleanMessages,
+      messages: messages,
+      system: "Eres MindEase AI, un asistente empático enfocado en bienestar emocional. Habla de forma cercana y cálida.",
     });
 
-    const reply = response.content?.[0]?.text ?? "";
+    const reply = response.content[0].text;
 
-    if (!reply) return errorResponse("empty_response_from_ai", 502);
+    // 3. REGISTRO DE CONSUMO: Guardar el uso si el usuario es gratuito
+    if (userId) {
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const sessionLogRef = db.collection("users").doc(userId).collection("sessionLogs").doc(currentMonth);
+      
+      await sessionLogRef.set({
+        usedSessions: 1,
+        lastUsed: Date.now(),
+        resetDate: "01/06/2026" // Dinámico según tu lógica de utils
+      }, { merge: true });
+    }
 
-    // Retornamos 'content' para que encaje perfectamente con tu interfaz
-    return new Response(
-      JSON.stringify({ content: reply, error: null }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    );
+    return NextResponse.json({ content: reply });
 
-  } catch (err) {
-    console.error("[/api/chat] Error:", err?.message ?? err);
-    return errorResponse("anthropic_api_rejected", 200); // Mantenemos vivo el flujo para que el frontend lo ataje
+  } catch (error) {
+    console.error("Error en la ruta del Chat:", error);
+    
+    // Si Anthropic rechaza la clave en el servidor, devolvemos una alerta limpia controlada
+    if (error.status === 401 || error.status === 403) {
+      return NextResponse.json({ error: "anthropic_api_rejected" }, { status: 500 });
+    }
+    
+    return NextResponse.json({ error: "internal_server_error" }, { status: 500 });
   }
 }
