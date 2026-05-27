@@ -35,10 +35,10 @@ function TopicPicker({ t, locale, onStart }) {
       <div style={{ textAlign:"center", marginBottom:28 }}>
         <div style={{ fontSize:44, marginBottom:12 }}>🌿</div>
         <h3 style={{ fontFamily:"var(--font-main)", fontSize:20, fontWeight:700, marginBottom:8 }}>
-          {locale === "es" ? "¿Sobre qué quieres hablar hoy?" : locale === "pt" ? "Sobre o que você quer conversar hoje?" : "What would you like to talk about?"}
+          {locale==="es" ? "¿Sobre qué quieres hablar hoy?" : locale==="pt" ? "Sobre o que você quer conversar hoje?" : "What would you like to talk about?"}
         </h3>
         <p style={{ color:"var(--text-muted)", fontSize:13, lineHeight:1.6, maxWidth:320, margin:"0 auto" }}>
-          {locale === "es" ? "Tu sesión gratuita mensual te da una conversación profunda y enfocada sobre un tema." : locale === "pt" ? "Sua sessão gratuita mensal oferece uma conversa profunda e focada sobre um tema." : "Your free monthly session gives you one deep, focused conversation on a topic of your choice."}
+          {locale==="es" ? "Tu sesión gratuita mensual te da una conversación profunda y enfocada sobre un tema." : locale==="pt" ? "Sua sessão gratuita mensal oferece uma conversa profunda e focada sobre um tema." : "Your free monthly session gives you one deep, focused conversation on a topic of your choice."}
         </p>
       </div>
 
@@ -69,7 +69,7 @@ function SessionWall({ t, locale, sessionStatus, onUpgrade }) {
         {locale==="es" ? "Tu sesión de este mes ha terminado" : locale==="pt" ? "Sua sessão deste mês acabou" : "Your session for this month is complete"}
       </h3>
       <p style={{ color:"var(--text-secondary)", fontSize:14, lineHeight:1.7, maxWidth:320, margin:"0 auto 8px" }}>
-        {locale==="es" ? `El plan gratuito incluye 1 conversación profunda por mes. Tu próxima sesión se abre el ${sessionStatus.resetDate}.` : locale==="pt" ? `O plano gratuito includes 1 conversa profunda por mês. Sua próxima sessão abre em ${sessionStatus.resetDate}.` : `The free plan includes 1 deep conversation per month. Your next session opens on ${sessionStatus.resetDate}.`}
+        {locale==="es" ? `El plan gratuito incluye 1 conversación profunda por mes. Tu próxima sesión se abre el ${sessionStatus.resetDate}.` : locale==="pt" ? `O plano gratuito inclui 1 conversa profunda por mês. Sua próxima sessão abre em ${sessionStatus.resetDate}.` : `The free plan includes 1 deep conversation per month. Your next session opens on ${sessionStatus.resetDate}.`}
       </p>
       <div style={{ display:"flex", flexDirection:"column", gap:10, maxWidth:280, margin:"0 auto", marginTop:20 }}>
         <button className="btn btn-primary" style={{ padding:"14px", fontSize:15 }} onClick={onUpgrade}>⭐ {locale==="es" ? "Actualizar a Premium — $5/mes" : locale==="pt" ? "Ir para Premium — $5/mês" : "Upgrade to Premium — $5/month"}</button>
@@ -81,7 +81,6 @@ function SessionWall({ t, locale, sessionStatus, onUpgrade }) {
 export default function AIChat({ t, locale, countryInfo, user, messages = [], setMessages, voiceKey, voiceEnabled, sessionLog, startSession, onUpgrade }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [activeTopic, setActiveTopic] = useState(null);
 
   const endRef = useRef(null);
@@ -91,7 +90,9 @@ export default function AIChat({ t, locale, countryInfo, user, messages = [], se
   const sessionStatus = getSessionStatus(sessionLog);
   const isPremium = user?.isPremium;
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, loading]);
+  const validMessages = Array.isArray(messages) ? messages : [];
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [validMessages, loading]);
 
   const handleStartSession = useCallback((topic) => {
     setActiveTopic(topic);
@@ -107,11 +108,9 @@ export default function AIChat({ t, locale, countryInfo, user, messages = [], se
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || loading) return;
-    setError("");
 
     const userMsg = { role:"user", content:text, timestamp:Date.now() };
-    const currentMessages = Array.isArray(messages) ? messages : [];
-    const newMessages = [...currentMessages, userMsg];
+    const newMessages = [...validMessages, userMsg];
 
     setMessages(newMessages);
     setInput("");
@@ -130,9 +129,8 @@ export default function AIChat({ t, locale, countryInfo, user, messages = [], se
 
       const data = await res.json().catch(() => null);
 
-      // Si la API nos tira error controlado o falta de saldo, lo renderizamos de forma segura en vez de romper la app
       if (!res.ok || !data || data.error) {
-        throw new Error(data?.error || "unauthorized_or_rejected");
+        throw new Error(data?.error || "api_error");
       }
 
       const aiMsg = { role:"assistant", content:data.content, timestamp:Date.now() };
@@ -140,8 +138,8 @@ export default function AIChat({ t, locale, countryInfo, user, messages = [], se
       if (voiceEnabled) setTimeout(()=>speak(data.content), 300);
 
     } catch (err) {
-      console.error("Chat frontend fallback triggered:", err);
-      const fallback = locale==="es" ? "Estoy experimentando una saturación en mi servidor de Anthropic. Respira profundo, dale un momento y vuelve a enviar el mensaje. 🌿" : "Having trouble with the AI response. Please give it a brief moment and retry. 🌿";
+      console.error("Chat Error:", err);
+      const fallback = locale==="es" ? "Tengo un problema de conexión temporal. Respira profundo, dale un momento y vuelve a enviar el mensaje. 🌿" : "Having trouble with the AI response. Please give it a brief moment and retry. 🌿";
       setMessages(prev => [...(Array.isArray(prev) ? prev : []), { role:"assistant", content: fallback, timestamp:Date.now() }]);
     } finally {
       setLoading(false);
@@ -170,7 +168,7 @@ export default function AIChat({ t, locale, countryInfo, user, messages = [], se
 
       {/* Messages */}
       <div style={{ flex:1, overflowY:"auto" }}>
-        {Array.isArray(messages) && messages.map((msg,i) => (
+        {validMessages.map((msg,i) => (
           <div key={i} style={{ display:"flex", justifyContent:msg.role==="user"?"flex-end":"flex-start", alignItems:"flex-end", gap:8, marginBottom:12 }}>
             {msg.role!=="user" && <div style={{ width:32, height:32, borderRadius:"50%", flexShrink:0, background:"linear-gradient(135deg,#6366f1,#8b5cf6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🌿</div>}
             <div style={{ maxWidth:"76%", display:"flex", flexDirection:"column", gap:4, alignItems:msg.role==="user"?"flex-end":"flex-start" }}>
