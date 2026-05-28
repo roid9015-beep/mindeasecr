@@ -4,7 +4,6 @@ import Anthropic from "@anthropic-ai/sdk";
 export async function POST(req) {
   try {
     const { messages } = await req.json();
-
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
@@ -17,13 +16,13 @@ export async function POST(req) {
 
     return NextResponse.json({ content: response.content[0].text });
   } catch (error) {
-    // AQUÍ ESTÁ EL BACKUP DE INFORMACIÓN QUE NECESITAMOS
-    console.error("DETALLE DEL ERROR DE ANTHROPIC:", error.error?.message || error.message);
+    // ESTO VA A LOS LOGS DE VERCEL (Pestaña "Logs" en tu despliegue)
+    console.error("LOG DETALLADO DE ANTHROPIC:", JSON.stringify(error, null, 2));
     
-    // Devolvemos al cliente el mensaje real de Anthropic para verlo en la consola
     return NextResponse.json({ 
-      error: "anthropic_fallo_de_conexion", 
-      detalle: error.error?.message || error.message 
+      error: "anthropic_fallo_de_conexion",
+      // Intentamos pasar el mensaje aunque sea corto
+      detalle: error.message 
     }, { status: 500 });
   }
 }
