@@ -10,10 +10,9 @@ const useAppStore = create(
       clearUser: () => set({ user: null, messages: [], activeSession: null }),
       upgradeToPremium: () => set((s) => ({ user: s.user ? { ...s.user, isPremium: true } : null })),
 
-      // ── Session management (free plan: 1 topic/month) ─────────────────────
-      // sessionLog: [{ monthKey, topic, startedAt }]
+      // ── Session management ────────────────────────────────────────────────
       sessionLog: [],
-      activeSession: null, // { topic, startedAt }
+      activeSession: null,
       setSessionLog: (log) => set({ sessionLog: log }),
       startSession: (topic) => {
         const now = new Date();
@@ -22,7 +21,7 @@ const useAppStore = create(
         set((s) => ({
           sessionLog: [...s.sessionLog, session],
           activeSession: session,
-          messages: [], // fresh conversation per session
+          messages: [],
         }));
       },
       endSession: () => set({ activeSession: null }),
@@ -47,7 +46,7 @@ const useAppStore = create(
 
       // ── Navigation ────────────────────────────────────────────────────────
       page: "dashboard",
-      setPage: (p) => set({ page: p }),
+      setPage: (p) => set({ p }),
       screen: "landing",
       setScreen: (s) => set({ screen: s }),
 
@@ -62,11 +61,16 @@ const useAppStore = create(
     {
       name: "mindease-storage",
       partialize: (s) => ({
-        locale: s.locale, voiceKey: s.voiceKey,
-        langInfo: s.langInfo, countryInfo: s.countryInfo,
+        locale: s.locale,
+        voiceKey: s.voiceKey,
+        langInfo: s.langInfo,
+        countryInfo: s.countryInfo,
         voiceEnabled: s.voiceEnabled,
-        pushEnabled: s.pushEnabled, reminderEnabled: s.reminderEnabled,
-        sessionLog: s.sessionLog, // persist monthly session usage
+        pushEnabled: s.pushEnabled,
+        reminderEnabled: s.reminderEnabled,
+        sessionLog: s.sessionLog,
+        messages: s.messages,      // AÑADIDO: para que no se borre al refrescar
+        activeSession: s.activeSession // AÑADIDO: para mantener la sesión viva
       }),
     }
   )
