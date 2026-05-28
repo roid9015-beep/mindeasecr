@@ -1,258 +1,40 @@
 "use client";
 import { useState, useEffect } from "react";
 import { getTranslation } from "@/lib/i18n";
-import { detectRegion } from "@/lib/utils";
 import useAppStore from "@/store/useAppStore";
-
-// Layout
-import Sidebar   from "@/components/layout/Sidebar";
+import Sidebar from "@/components/layout/Sidebar";
 import BottomNav from "@/components/layout/BottomNav";
-
-// UI
 import BackgroundOrbs from "@/components/ui/BackgroundOrbs";
-import PremiumModal   from "@/components/ui/PremiumModal";
-import LanguageBadge  from "@/components/ui/LanguageBadge";
-
-// Pages
-import LandingPage        from "@/components/features/LandingPage";
-import AuthPage           from "@/components/features/AuthPage";
-import Dashboard          from "@/components/features/Dashboard";
-import AIChat             from "@/components/features/AIChat";
-import BreathingExercise  from "@/components/features/BreathingExercise";
-import GroundingExercise  from "@/components/features/GroundingExercise";
-import Insights           from "@/components/features/Insights";
-import Settings           from "@/components/features/Settings";
+import Dashboard from "@/components/features/Dashboard";
+import AIChat from "@/components/features/AIChat";
 
 export default function MindEaseApp() {
-  // ── Global state ────────────────────────────────────────────────────────────
-  const {
-    user, setUser, clearUser, upgradeToPremium,
-    locale, voiceKey, langInfo, countryInfo, setRegion,
-    voiceEnabled, setVoiceEnabled,
-    messages, setMessages,
-    page, setPage,
-    screen, setScreen,
-    pushEnabled, setPushEnabled,
-    reminderEnabled, setReminderEnabled,
-    sessionLog, startSession,
-  } = useAppStore();
+  const { user, locale, page, setPage, messages, setMessages, sessionLog, startSession } = useAppStore();
+  const [mounted, setMounted] = useState(false);
 
-  const [showPremium, setShowPremium] = useState(false);
-  const [detecting,   setDetecting]   = useState(true);
+  useEffect(() => { setMounted(true); }, []);
 
-  // ── Auto-detect region once on mount ────────────────────────────────────────
-  useEffect(() => {
-    if (langInfo) { setDetecting(false); return; } // already persisted
-    detectRegion().then((result) => {
-      setRegion({
-        locale:      result.locale,
-        voiceKey:    result.voiceKey,
-        langInfo:    { flag: result.flag, country: result.country, locale: result.locale },
-        countryInfo: result,
-      });
-      setDetecting(false);
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!mounted) return <div style={{ color: "white", padding: 20 }}>Cargando...</div>;
 
   const t = getTranslation(locale);
 
-  // ── Handlers ─────────────────────────────────────────────────────────────────
-  const handleLogin = (userData) => {
-    setUser(userData);
-    setScreen("app");
-    setPage("dashboard");
-  };
-
-  const handleLogout = () => {
-    clearUser();
-    setScreen("landing");
-    setPage("dashboard");
-  };
-
-  const handleUpgrade = () => {
-    upgradeToPremium();
-    setShowPremium(false);
-  };
-
-  const handleChangeLocale = (newLocale, newVoice, info) => {
-    setRegion({
-      locale:      newLocale,
-      voiceKey:    newVoice,
-      langInfo:    { flag: info.flag, country: info.country, locale: newLocale },
-      countryInfo: info,
-    });
-  };
-
-  // ── Loading splash ────────────────────────────────────────────────────────────
-  if (detecting) {
-    return (
-      <div style={{
-        minHeight:"100vh", display:"flex", flexDirection:"column",
-        alignItems:"center", justifyContent:"center", gap:16,
-        background:"var(--bg-primary)",
-      }}>
-        <div style={{ fontSize:48 }}>🌿</div>
-        <div className="spinner" style={{ width:28, height:28 }} />
-        <p style={{ color:"var(--text-muted)", fontSize:13 }}>Detecting your region…</p>
-      </div>
-    );
-  }
-
-  // ── Landing ──────────────────────────────────────────────────────────────────
-  if (screen === "landing") {
-    return (
-      <LandingPage
-        t={t}
-        locale={locale}
-        langInfo={langInfo}
-        onChangeLocale={handleChangeLocale}
-        onGetStarted={() => setScreen("auth")}
-      />
-    );
-  }
-
-  // ── Auth ─────────────────────────────────────────────────────────────────────
-  if (screen === "auth") {
-    return (
-      <AuthPage
-        t={t}
-        langInfo={langInfo}
-        onChangeLocale={handleChangeLocale}
-        onLogin={handleLogin}
-      />
-    );
-  }
-
-  // ── App shell ─────────────────────────────────────────────────────────────────
-  const renderPage = () => {
-    const common = { t, locale, voiceKey, voiceEnabled };
+  const renderContent = () => {
     switch (page) {
-      case "dashboard":
-        return <Dashboard {...common} user={user} onNavigate={setPage} messages={messages} />;
-
       case "chat":
-        return (
-          <AIChat
-            {...common}
-            countryInfo={countryInfo}
-            user={user}
-            messages={messages}
-            setMessages={setMessages}
-            sessionLog={sessionLog}
-            startSession={startSession}
-            onUpgrade={() => setShowPremium(true)}
-          />
-        );
-
-      case "breathing":
-        return <BreathingExercise {...common} />;
-
-      case "grounding":
-        return <GroundingExercise {...common} />;
-
-      case "insights":
-        return <Insights t={t} />;
-
-      case "settings":
-        return (
-          <Settings
-            t={t}
-            user={user}
-            onLogout={handleLogout}
-            onUpgrade={() => setShowPremium(true)}
-            voiceEnabled={voiceEnabled}    setVoiceEnabled={setVoiceEnabled}
-            voiceKey={voiceKey}
-            pushEnabled={pushEnabled}      setPushEnabled={setPushEnabled}
-            reminderEnabled={reminderEnabled} setReminderEnabled={setReminderEnabled}
-            langInfo={langInfo}            onChangeLocale={handleChangeLocale}
-          />
-        );
-
+        return <AIChat t={t} locale={locale} messages={messages} setMessages={setMessages} sessionLog={sessionLog} startSession={startSession} />;
       default:
-        return <Dashboard {...common} user={user} onNavigate={setPage} messages={messages} />;
+        return <Dashboard t={t} />;
     }
   };
 
   return (
     <>
       <BackgroundOrbs />
-
-      {showPremium && (
-        <PremiumModal
-          t={t}
-          locale={locale}
-          onClose={() => setShowPremium(false)}
-          onUpgrade={handleUpgrade}
-        />
-      )}
-
-      <div style={{
-        minHeight:"100vh", display:"flex",
-        position:"relative", zIndex:1,
-        maxWidth:1200, margin:"0 auto",
-      }}>
-        {/* ── Desktop sidebar ── */}
-        <Sidebar
-          t={t}
-          user={user}
-          page={page}
-          setPage={setPage}
-          voiceEnabled={voiceEnabled}
-          voiceKey={voiceKey}
-          langInfo={langInfo}
-          onChangeLocale={handleChangeLocale}
-          onShowPremium={() => setShowPremium(true)}
-        />
-
-        {/* ── Main content ── */}
-        <main style={{ flex:1, padding:"0 18px 110px", overflowX:"hidden", minHeight:"100vh" }}>
-          <div style={{ maxWidth:660, margin:"0 auto", paddingTop:22 }}>
-
-            {/* Mobile top bar */}
-            <div
-              className="mobile-only"
-              style={{
-                display:"flex", alignItems:"center", justifyContent:"space-between",
-                marginBottom:20, paddingBottom:14, borderBottom:"1px solid var(--border)",
-              }}
-            >
-              <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-                <span style={{ fontSize:20 }}>🌿</span>
-                <span className="logo-text" style={{ fontSize:17 }}>{t.appName}</span>
-              </div>
-              <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                <LanguageBadge langInfo={langInfo} onChangeLocale={handleChangeLocale} />
-                {!user?.isPremium && (
-                  <button
-                    className="btn btn-primary"
-                    style={{ padding:"5px 12px", fontSize:11 }}
-                    onClick={() => setShowPremium(true)}
-                  >
-                    ⭐ $5/mo
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {renderPage()}
-          </div>
-        </main>
+      <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex" }}>
+        <Sidebar page={page} setPage={setPage} />
+        <main style={{ flex: 1, padding: 20 }}>{renderContent()}</main>
       </div>
-
-      {/* ── Mobile bottom nav ── */}
-      <BottomNav t={t} page={page} setPage={setPage} />
-
-      {/* ── Shared button & responsive styles ── */}
-      <style>{`
-        @media(max-width:768px){.desktop-only{display:none!important}.mobile-only{display:flex!important}}
-        @media(min-width:769px){.mobile-only{display:none!important}.mobile-nav{display:none!important}}
-        .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 24px;border-radius:10px;font-family:var(--font-main);font-size:14px;font-weight:500;cursor:pointer;transition:all .2s;border:none;outline:none;white-space:nowrap}
-        .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:white;box-shadow:0 4px 16px rgba(99,102,241,.3)}
-        .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(99,102,241,.45)}
-        .btn-ghost{background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border)}
-        .btn-ghost:hover{background:var(--bg-card-hover);color:var(--text-primary);border-color:var(--border-hover)}
-        .btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
-      `}</style>
+      <BottomNav page={page} setPage={setPage} />
     </>
   );
 }
