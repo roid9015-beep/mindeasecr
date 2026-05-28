@@ -2,11 +2,7 @@
 import { useState, useEffect } from "react";
 import { getTranslation } from "@/lib/i18n";
 import useAppStore from "@/store/useAppStore";
-import Sidebar from "@/components/layout/Sidebar";
-import BottomNav from "@/components/layout/BottomNav";
-import BackgroundOrbs from "@/components/ui/BackgroundOrbs";
-import Dashboard from "@/components/features/Dashboard";
-import AIChat from "@/components/features/AIChat";
+// ... mantén tus otros imports
 
 export default function MindEaseApp() {
   const { user, locale, page, setPage, messages, setMessages, sessionLog, startSession } = useAppStore();
@@ -16,26 +12,17 @@ export default function MindEaseApp() {
 
   if (!mounted) return <div style={{ color: "white", padding: 20 }}>Cargando...</div>;
 
-  // PROTECCIÓN: Si falla la traducción, usamos un objeto vacío para que no rompa la app
-  const t = getTranslation(locale) || { homeLabel: "Home", chatPlaceholder: "Escribe..." };
-
-  const renderContent = () => {
-    switch (page) {
-      case "chat":
-        return <AIChat t={t} locale={locale} messages={messages} setMessages={setMessages} sessionLog={sessionLog} startSession={startSession} />;
-      default:
-        return <Dashboard t={t} />;
-    }
+  // Corrección clave: usamos un objeto por defecto si getTranslation falla
+  const t = getTranslation(locale) || { 
+    appName: "MindEase", 
+    homeLabel: "Inicio", 
+    chatPlaceholder: "Escribe algo..." 
   };
 
+  // ... resto de tu lógica de renderizado
   return (
     <div style={{ position: "relative", minHeight: "100vh" }}>
-      <BackgroundOrbs />
-      <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex" }}>
-        <Sidebar page={page} setPage={setPage} />
-        <main style={{ flex: 1, padding: 20 }}>{renderContent()}</main>
-      </div>
-      <BottomNav page={page} setPage={setPage} />
+      {/* Tu contenido principal */}
     </div>
   );
 }
