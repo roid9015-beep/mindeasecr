@@ -9,19 +9,18 @@ export async function POST(req) {
     });
 
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      // CAMBIO: Vamos a usar el modelo estándar "claude-3-5-sonnet-20240620" 
+      // que es el más estable y universalmente soportado.
+      model: "claude-3-5-sonnet-20240620", 
       max_tokens: 1024,
       messages: messages,
     });
 
     return NextResponse.json({ content: response.content[0].text });
   } catch (error) {
-    // ESTO VA A LOS LOGS DE VERCEL (Pestaña "Logs" en tu despliegue)
-    console.error("LOG DETALLADO DE ANTHROPIC:", JSON.stringify(error, null, 2));
-    
+    console.error("DETALLE:", JSON.stringify(error, null, 2));
     return NextResponse.json({ 
       error: "anthropic_fallo_de_conexion",
-      // Intentamos pasar el mensaje aunque sea corto
       detalle: error.message 
     }, { status: 500 });
   }
