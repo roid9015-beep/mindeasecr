@@ -16,7 +16,8 @@ export default function MindEaseApp() {
 
   if (!mounted) return <div style={{ color: "white", padding: 20 }}>Cargando...</div>;
 
-  const t = getTranslation(locale);
+  // PROTECCIÓN: Si falla la traducción, usamos un objeto vacío para que no rompa la app
+  const t = getTranslation(locale) || { homeLabel: "Home", chatPlaceholder: "Escribe..." };
 
   const renderContent = () => {
     switch (page) {
@@ -28,13 +29,13 @@ export default function MindEaseApp() {
   };
 
   return (
-    <>
+    <div style={{ position: "relative", minHeight: "100vh" }}>
       <BackgroundOrbs />
       <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex" }}>
         <Sidebar page={page} setPage={setPage} />
         <main style={{ flex: 1, padding: 20 }}>{renderContent()}</main>
       </div>
       <BottomNav page={page} setPage={setPage} />
-    </>
+    </div>
   );
 }
