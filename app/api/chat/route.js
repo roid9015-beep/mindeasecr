@@ -1,8 +1,13 @@
-import { NextResponse } from "next/server";
-
-export async function POST(req) {
-  try {
+// ... (dentro de tu POST)
     const body = await req.json();
+    
+    // Inyectamos el rol de psicólogo si es el primer mensaje
+    const systemPrompt = {
+      role: "system",
+      content: "Eres un psicólogo clínico experto, con una sabiduría profunda en filosofía existencial y conductual. Independientemente de lo que el usuario escriba, siempre identifica la frustración, el miedo o el agotamiento subyacente. Responde con empatía y guía al usuario."
+    };
+
+    const messagesToSend = [systemPrompt, ...body.messages];
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -14,26 +19,7 @@ export async function POST(req) {
       body: JSON.stringify({
         model: "claude-opus-4-8",
         max_tokens: 1024,
-        messages: body.messages,
+        messages: messagesToSend, // Enviamos el historial completo + el prompt
       }),
     });
-
-    const data = await response.json();
-
-    // LOG DE VALIDACIÓN: Esto aparecerá en los logs de Vercel
-    console.log("DATOS RECIBIDOS DE ANTHROPIC:", JSON.stringify(data));
-
-    // Si la respuesta es exitosa pero la estructura es diferente, 
-    // intentamos extraer el texto de forma más flexible
-    if (data.content && Array.isArray(data.content) && data.content.length > 0) {
-      const text = data.content[0].text || "Sin respuesta de texto";
-      return NextResponse.json({ content: text });
-    } 
-    
-    return NextResponse.json({ content: "Error: Estructura de respuesta no reconocida" });
-    
-  } catch (error) {
-    console.error("ERROR DE EJECUCIÓN:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
+// ...
