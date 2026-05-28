@@ -1,28 +1,33 @@
 "use client";
-import { useState, useEffect } from "react";
-import { getTranslation } from "@/lib/i18n";
+import { useEffect, useState } from "react";
 import useAppStore from "@/store/useAppStore";
-// ... mantén tus otros imports
+import Dashboard from "@/components/features/Dashboard";
+import AIChat from "@/components/features/AIChat";
 
 export default function MindEaseApp() {
-  const { user, locale, page, setPage, messages, setMessages, sessionLog, startSession } = useAppStore();
+  const { user, page } = useAppStore();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  if (!mounted) return <div style={{ color: "white", padding: 20 }}>Cargando...</div>;
+  if (!mounted) return null;
 
-  // Corrección clave: usamos un objeto por defecto si getTranslation falla
-  const t = getTranslation(locale) || { 
-    appName: "MindEase", 
-    homeLabel: "Inicio", 
-    chatPlaceholder: "Escribe algo..." 
-  };
+  // Si no hay usuario, forzamos la vista de login o lo que tenías antes
+  if (!user) {
+    return (
+      <div style={{ color: "white", padding: "20px" }}>
+        <h1>Bienvenido a MindEase</h1>
+        <p>Por favor, inicia sesión para continuar.</p>
+        {/* Aquí iría tu componente de Login si lo tienes separado */}
+      </div>
+    );
+  }
 
-  // ... resto de tu lógica de renderizado
   return (
-    <div style={{ position: "relative", minHeight: "100vh" }}>
-      {/* Tu contenido principal */}
+    <div>
+      {page === "chat" ? <AIChat /> : <Dashboard />}
     </div>
   );
 }
