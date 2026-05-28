@@ -9,16 +9,15 @@ export async function POST(req) {
     });
 
     const response = await anthropic.messages.create({
-      // CAMBIO: Vamos a usar el modelo estándar "claude-3-5-sonnet-20240620" 
-      // que es el más estable y universalmente soportado.
-      model: "claude-3-5-sonnet-20240620", 
+      // Usamos el alias 'latest' para evitar el error de nombre de modelo
+      model: "claude-3-5-sonnet-latest",
       max_tokens: 1024,
       messages: messages,
     });
 
     return NextResponse.json({ content: response.content[0].text });
   } catch (error) {
-    console.error("DETALLE:", JSON.stringify(error, null, 2));
+    console.error("ERROR FINAL:", JSON.stringify(error, null, 2));
     return NextResponse.json({ 
       error: "anthropic_fallo_de_conexion",
       detalle: error.message 
