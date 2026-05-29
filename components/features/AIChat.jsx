@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import { useVoice } from "@/hooks/useVoice";
 import { loadConversation, saveMessage } from "@/lib/firestore";
 
@@ -122,29 +123,37 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     }
   }, []); // eslint-disable-line
 
-  // ── Efecto de apertura único ──────────────────────────────────────────────
-  // Usa user?.uid del prop (ya disponible desde el store) — no depende de auth.currentUser
+  // ── Efecto de apertura — espera respuesta definitiva de Firebase Auth ────
+  // onAuthStateChanged garantiza que sabemos si hay sesión o no antes de decidir
   useEffect(() => {
     if (hasOpened.current) return;
-    hasOpened.current = true;
 
-    const uid = user?.uid;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      unsubscribe(); // solo necesitamos la primera respuesta
+      if (hasOpened.current) return;
+      hasOpened.current = true;
 
-    if (uid) {
-      loadConversation(uid)
-        .then((history) => {
+      const uid = firebaseUser?.uid;
+
+      if (uid) {
+        try {
+          const history = await loadConversation(uid);
           if (history && history.length > 0) {
             setMessages(history);
             callAPIReturn(history.slice(-6), uid);
           } else {
             callAPI([{ role: "user", content: "__OPENING__" }], true);
           }
-        })
-        .catch(() => callAPI([{ role: "user", content: "__OPENING__" }], true));
-    } else {
-      callAPI([{ role: "user", content: "__OPENING__" }], true);
-    }
-  }, [user?.uid]); // depende del uid — cuando llegue del store, corre
+        } catch {
+          callAPI([{ role: "user", content: "__OPENING__" }], true);
+        }
+      } else {
+        callAPI([{ role: "user", content: "__OPENING__" }], true);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []); // eslint-disable-line
 
   // ── Enviar mensaje ────────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
