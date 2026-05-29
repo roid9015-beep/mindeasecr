@@ -34,13 +34,10 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
   const [isListening, setIsListening] = useState(false);
   const [error,       setError]       = useState("");
 
-  // ── PIN de privacidad ─────────────────────────────────────────────────────
-  const pinEnabled = typeof window !== "undefined" && !!localStorage.getItem("mindease_pin");
-  const [pinUnlocked, setPinUnlocked] = useState(!pinEnabled);
-
-  if (!pinUnlocked) {
-    return <PinLock locale={locale} onUnlock={() => setPinUnlocked(true)} />;
-  }
+  // ── PIN — declarado con los demás hooks, sin early return ───────────────
+  const [pinUnlocked, setPinUnlocked] = useState(
+    typeof window === "undefined" ? true : !localStorage.getItem("mindease_pin")
+  );
 
   const hasOpened      = useRef(false);
   const endRef         = useRef(null);
@@ -243,6 +240,11 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     pt: "Escreva o que quiser me contar...",
     en: "Write whatever you want to share...",
   };
+
+  // Mostrar PIN si está activo y no desbloqueado
+  if (!pinUnlocked) {
+    return <PinLock locale={locale} onUnlock={() => setPinUnlocked(true)} />;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 140px)", animation: "fadeUp 0.4s ease" }}>
