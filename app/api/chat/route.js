@@ -283,13 +283,29 @@ Sin markdown, sin títulos. Solo texto cálido y directo. Usá el nombre siempre
       };
 
       const returnPrompt = returnPrompts[locale] || returnPrompts.en;
-      const validHistory = messages.filter(m => m.role === "user" || m.role === "assistant").slice(-6);
+      let validHistory = messages
+        .filter(m => (m.role === "user" || m.role === "assistant")
+          && typeof m.content === "string"
+          && m.content.trim()
+          && m.content !== "__OPENING__")
+        .slice(-6);
+
+      // Anthropic requiere que el primer mensaje sea siempre "user"
+      // Si el historial empieza con "assistant", lo descartamos hasta encontrar un "user"
+      while (validHistory.length > 0 && validHistory[0].role === "assistant") {
+        validHistory = validHistory.slice(1);
+      }
+
+      // Si quedó vacío después del filtro, usar mensaje genérico
+      if (validHistory.length === 0) {
+        validHistory = [{ role: "user", content: "El usuario regresó a la app." }];
+      }
 
       const response = await anthropic.messages.create({
         model: "claude-opus-4-5",
         max_tokens: 400,
         system: returnPrompt,
-        messages: validHistory.length > 0 ? validHistory : [{ role: "user", content: "El usuario regresó." }],
+        messages: validHistory,
       });
       const reply = response.content?.[0]?.text?.trim();
       if (!reply) return NextResponse.json({ error: "empty_response_from_ai" }, { status: 500 });
