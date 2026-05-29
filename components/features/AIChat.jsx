@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import { useVoice } from "@/hooks/useVoice";
 import { loadConversation, saveMessage } from "@/lib/firestore";
 
@@ -37,7 +38,8 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
   const inputRef       = useRef(null);
   const recognitionRef = useRef(null);
 
-  const userName = user?.name || user?.displayName
+  // Prioriza el prop user (viene del store), luego Firebase Auth
+  const userName = user?.name || user?.displayName || user?.email?.split("@")[0]
     || auth.currentUser?.displayName
     || auth.currentUser?.email?.split("@")[0] || "";
 
@@ -111,30 +113,39 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     }
   }, [fetchAPI, addAIMessage]);
 
-  // ── UN SOLO efecto de apertura — evita condición de carrera ─────────────
+  // ── Efecto de apertura — espera a que Firebase Auth esté listo ──────────
   useEffect(() => {
     if (hasOpened.current) return;
-    hasOpened.current = true;
 
-    const uid = auth.currentUser?.uid;
+    // onAuthStateChanged dispara una vez con el usuario real (o null)
+    // Esto garantiza que auth.currentUser ya tiene valor antes de consultar Firestore
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      unsubscribe(); // solo necesitamos el primer evento
 
-    if (uid) {
-      // Tiene cuenta → cargar historial primero, luego decidir
-      loadConversation(uid)
-        .then((history) => {
-          if (history && history.length > 0) {
-            setMessages(history);
-            callAPIReturn(history.slice(-6)); // regreso con contexto
-          } else {
-            callAPI([{ role: "user", content: "__OPENING__" }], true); // primera vez
-          }
-        })
-        .catch(() => {
-          callAPI([{ role: "user", content: "__OPENING__" }], true);
-        });
-    } else {
-      callAPI([{ role: "user", content: "__OPENING__" }], true);
-    }
+      if (hasOpened.current) return;
+      hasOpened.current = true;
+
+      const uid = firebaseUser?.uid;
+
+      if (uid) {
+        loadConversation(uid)
+          .then((history) => {
+            if (history && history.length > 0) {
+              setMessages(history);
+              callAPIReturn(history.slice(-6));
+            } else {
+              callAPI([{ role: "user", content: "__OPENING__" }], true);
+            }
+          })
+          .catch(() => {
+            callAPI([{ role: "user", content: "__OPENING__" }], true);
+          });
+      } else {
+        callAPI([{ role: "user", content: "__OPENING__" }], true);
+      }
+    });
+
+    return () => unsubscribe();
   }, []); // eslint-disable-line
 
   // ── Enviar mensaje de texto ───────────────────────────────────────────────
