@@ -5,6 +5,7 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useVoice } from "@/hooks/useVoice";
 import { loadConversation, saveMessage } from "@/lib/firestore";
+import PinLock from "@/components/ui/PinLock";
 
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -32,6 +33,14 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
   const [isLoading,   setIsLoading]   = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [error,       setError]       = useState("");
+
+  // ── PIN de privacidad ─────────────────────────────────────────────────────
+  const pinEnabled = typeof window !== "undefined" && !!localStorage.getItem("mindease_pin");
+  const [pinUnlocked, setPinUnlocked] = useState(!pinEnabled);
+
+  if (!pinUnlocked) {
+    return <PinLock locale={locale} onUnlock={() => setPinUnlocked(true)} />;
+  }
 
   const hasOpened      = useRef(false);
   const endRef         = useRef(null);
