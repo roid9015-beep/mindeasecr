@@ -242,32 +242,46 @@ export async function POST(req) {
       return NextResponse.json({ error: "invalid_json_body" }, { status: 400 });
     }
 
-    const { messages, userName, locale: clientLocale } = body;
+    const { messages, userName, locale: clientLocale, isOpening } = body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "no_valid_messages" }, { status: 400 });
     }
 
+    const locale = clientLocale || detectLocale(messages);
+    const name = userName || null;
+
+    // ── Apertura automática: el frontend envía __OPENING__ ────────────────────
+    if (isOpening || (messages.length === 1 && messages[0]?.content === "__OPENING__")) {
+      const systemPrompt = buildSystemPrompt(locale, name, true);
+      const response = await anthropic.messages.create({
+        model: "claude-opus-4-5",
+        max_tokens: 1200,
+        system: systemPrompt,
+        messages: [{ role: "user", content: "Inicia la sesión terapéutica ahora." }],
+      });
+      const reply = response.content?.[0]?.text?.trim();
+      if (!reply) return NextResponse.json({ error: "empty_response_from_ai" }, { status: 500 });
+      return NextResponse.json({ reply }, { status: 200 });
+    }
+
+    // ── Conversación normal ───────────────────────────────────────────────────
     const validMessages = messages.filter(
       (m) =>
         m &&
         typeof m === "object" &&
         (m.role === "user" || m.role === "assistant") &&
         typeof m.content === "string" &&
-        m.content.trim().length > 0
+        m.content.trim().length > 0 &&
+        m.content !== "__OPENING__"
     );
 
     if (validMessages.length === 0) {
       return NextResponse.json({ error: "no_valid_messages" }, { status: 400 });
     }
 
-    const locale = clientLocale || detectLocale(validMessages);
-
-    // Detectar si es el primer mensaje del usuario en esta sesión
-    const userMessages = validMessages.filter((m) => m.role === "user");
-    const isFirstMessage = userMessages.length === 1;
-
-    const systemPrompt = buildSystemPrompt(locale, userName || null, isFirstMessage);
+    const isFirstMessage = validMessages.filter((m) => m.role === "user").length === 1;
+    const systemPrompt = buildSystemPrompt(locale, name, isFirstMessage);
 
     const anthropicMessages = validMessages.map((m) => ({
       role: m.role,
