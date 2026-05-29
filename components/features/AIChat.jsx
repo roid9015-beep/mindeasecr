@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { auth } from "@/lib/firebase";
+import { useVoice } from "@/hooks/useVoice";
 
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -41,7 +42,7 @@ function TypingIndicator() {
   );
 }
 
-export default function AIChat({ user, locale = "es", voiceEnabled = false }) {
+export default function AIChat({ user, locale = "es", voiceEnabled = false, voiceKey = "es-MX" }) {
   const [messages,  setMessages]  = useState([]);
   const [input,     setInput]     = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +50,58 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false }) {
   const hasOpened = useRef(false);
   const endRef    = useRef(null);
   const inputRef  = useRef(null);
+
+  const { speak, stop, speaking } = useVoice(voiceKey, voiceEnabled);
+
+  // ── Reconocimiento de voz (speech-to-text) ────────────────────────────────
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  const startListening = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+
+    const recognition = new SR();
+    recognitionRef.current = recognition;
+
+    // Idioma del micrófono = mismo que la voz
+    const langMap = { es: "es-MX", pt: "pt-BR", en: "en-US" };
+    recognition.lang = langMap[locale] || "es-MX";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart  = () => setIsListening(true);
+    recognition.onend    = () => setIsListening(false);
+    recognition.onerror  = () => setIsListening(false);
+
+    recognition.onresult = (e) => {
+      const transcript = e.results[0]?.[0]?.transcript?.trim();
+      if (transcript) {
+        // Poner el texto en el input y enviarlo automáticamente
+        setInput(transcript);
+        setTimeout(() => {
+          setInput("");
+          const userMsg = { role: "user", content: transcript, timestamp: Date.now() };
+          setMessages((prev) => {
+            const updated = Array.isArray(prev) ? [...prev, userMsg] : [userMsg];
+            const payload = updated
+              .filter((m) => (m.role === "user" || m.role === "assistant") && m.content !== "__OPENING__")
+              .map((m) => ({ role: m.role, content: m.content }));
+            callAPI(payload, false);
+            return updated;
+          });
+        }, 100);
+      }
+    };
+
+    recognition.start();
+  }, [locale, callAPI]);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  }, []);
 
   // Nombre del usuario — toma del prop user, luego de Firebase Auth, luego vacío
   const userName = user?.name || user?.displayName || auth.currentUser?.displayName || auth.currentUser?.email?.split("@")[0] || "";
@@ -86,6 +139,8 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false }) {
       if (data.reply && typeof data.reply === "string" && data.reply.trim()) {
         const aiMsg = { role: "assistant", content: data.reply.trim(), timestamp: Date.now() };
         setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
+        // Leer en voz alta si está activado
+        if (voiceEnabled) speak(data.reply.trim());
       } else {
         setError(getFriendlyError(data.error ?? "unknown_error", locale));
       }
@@ -143,14 +198,40 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false }) {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, paddingBottom: 14, borderBottom: "1px solid var(--border,rgba(255,255,255,0.08))", marginBottom: 14 }}>
         <div style={{ width: 44, height: 44, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🌿</div>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontWeight: 600, fontSize: 15 }}>MindEase</div>
           <div style={{ fontSize: 11, color: "#10b981", display: "flex", alignItems: "center", gap: 4 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981" }} />
             {locale === "es" ? "Aquí para ti" : locale === "pt" ? "Aqui para você" : "Here for you"}
           </div>
         </div>
+        {/* Botón de voz — visible solo si voiceEnabled */}
+        {voiceEnabled && (
+          <button
+            onClick={speaking ? stop : undefined}
+            title={speaking
+              ? (locale === "es" ? "Detener voz" : locale === "pt" ? "Parar voz" : "Stop voice")
+              : (locale === "es" ? "Voz activada" : locale === "pt" ? "Voz ativada" : "Voice on")}
+            style={{
+              width: 34, height: 34, borderRadius: "50%", border: "none",
+              background: speaking ? "rgba(99,102,241,0.25)" : "rgba(99,102,241,0.1)",
+              color: speaking ? "#818cf8" : "var(--text-muted)",
+              cursor: speaking ? "pointer" : "default",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16, transition: "all .2s",
+              animation: speaking ? "pulse-voice 1.5s ease-in-out infinite" : "none",
+            }}
+          >
+            {speaking ? "🔊" : "🔈"}
+          </button>
+        )}
       </div>
+      <style>{`
+        @keyframes pulse-voice {
+          0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.4); }
+          50% { box-shadow: 0 0 0 8px rgba(99,102,241,0); }
+        }
+      `}</style>
 
       {/* Mensajes */}
       <div style={{ flex: 1, overflowY: "auto", paddingRight: 4 }}>
@@ -208,15 +289,40 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false }) {
       )}
 
       {/* Input */}
-      <div style={{ display: "flex", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border,rgba(255,255,255,0.08))" }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border,rgba(255,255,255,0.08))", alignItems: "flex-end" }}>
+
+        {/* Botón micrófono */}
+        <button
+          onClick={isListening ? stopListening : startListening}
+          disabled={isLoading}
+          title={isListening
+            ? (locale === "es" ? "Detener" : locale === "pt" ? "Parar" : "Stop")
+            : (locale === "es" ? "Hablar" : locale === "pt" ? "Falar" : "Speak")}
+          style={{
+            width: 44, height: 44, borderRadius: 10, border: "none", flexShrink: 0,
+            background: isListening ? "rgba(239,68,68,0.15)" : "var(--bg-card,rgba(255,255,255,0.05))",
+            border: isListening ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border,rgba(255,255,255,0.1))",
+            color: isListening ? "#f87171" : "var(--text-muted)",
+            cursor: isLoading ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 18, transition: "all .2s",
+            animation: isListening ? "pulse-mic 1s ease-in-out infinite" : "none",
+            opacity: isLoading ? 0.5 : 1,
+          }}
+        >
+          {isListening ? "⏹" : "🎙️"}
+        </button>
+
         <textarea
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholders[locale] ?? placeholders.es}
+          placeholder={isListening
+            ? (locale === "es" ? "Escuchando..." : locale === "pt" ? "Ouvindo..." : "Listening...")
+            : (placeholders[locale] ?? placeholders.es)}
           rows={1}
-          disabled={isLoading}
+          disabled={isLoading || isListening}
           style={{
             flex: 1, resize: "none", maxHeight: 120,
             overflow: input.length > 100 ? "auto" : "hidden",
@@ -225,20 +331,22 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false }) {
             borderRadius: 10, color: "var(--text-primary,#f0f1fa)",
             fontFamily: "var(--font-body,'DM Sans',sans-serif)", fontSize: 15,
             padding: "12px 16px", outline: "none", transition: "border-color .2s",
-            opacity: isLoading ? 0.6 : 1,
+            opacity: (isLoading || isListening) ? 0.6 : 1,
           }}
           onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
           onBlur={(e)  => (e.target.style.borderColor = "var(--border,rgba(255,255,255,0.1))")}
         />
+
         <button
           onClick={sendMessage}
-          disabled={isLoading || !input.trim()}
+          disabled={isLoading || !input.trim() || isListening}
           style={{
-            padding: "12px 20px", borderRadius: 10, border: "none",
+            width: 44, height: 44, borderRadius: 10, border: "none", flexShrink: 0,
             background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-            color: "white", cursor: "pointer", flexShrink: 0,
+            color: "white", cursor: "pointer",
             transition: "all .2s", fontSize: 18,
-            opacity: (isLoading || !input.trim()) ? 0.5 : 1,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            opacity: (isLoading || !input.trim() || isListening) ? 0.5 : 1,
           }}
           onMouseEnter={(e) => { if (!isLoading && input.trim()) e.currentTarget.style.transform = "translateY(-2px)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}
@@ -248,6 +356,12 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false }) {
           ) : "→"}
         </button>
       </div>
+      <style>{`
+        @keyframes pulse-mic {
+          0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+          50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+        }
+      `}</style>
 
       <p style={{ fontSize: 10, color: "var(--text-muted,#4a4d64)", textAlign: "center", marginTop: 8 }}>
         {locale === "es" ? "MindEase es un acompañante IA, no reemplaza la terapia profesional."
