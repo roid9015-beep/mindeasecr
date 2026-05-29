@@ -55,7 +55,10 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     loadConversation(uid).then((history) => {
       if (history.length > 0) {
         setMessages(history);
-        hasOpened.current = true; // ya hay historial — no disparar apertura
+        hasOpened.current = true; // marcar para que no dispare apertura estándar
+        // Disparar saludo de regreso con contexto del historial
+        const lastMessages = history.slice(-6); // últimos 6 mensajes como contexto
+        callAPIReturn(lastMessages);
       }
     });
   }, []); // eslint-disable-line
@@ -103,7 +106,42 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     }
   }, [userName, locale, voiceEnabled, speak]);
 
-  // ── Apertura automática ───────────────────────────────────────────────────
+  // ── Saludo de regreso con contexto del historial ─────────────────────────
+  const callAPIReturn = useCallback(async (recentHistory) => {
+    setIsLoading(true);
+    setError("");
+    try {
+      const token = await auth.currentUser?.getIdToken(true).catch(() => null);
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          messages: recentHistory.map((m) => ({ role: m.role, content: m.content })),
+          userName: userName || undefined,
+          locale,
+          isReturn: true, // señal para saludo de regreso
+        }),
+      });
+      let data;
+      try { data = await response.json(); } catch { data = { error: "invalid_server_response" }; }
+      if (data?.reply?.trim()) {
+        const aiMsg = { role: "assistant", content: data.reply.trim(), timestamp: Date.now() };
+        setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
+        if (voiceEnabled) speak(data.reply.trim());
+        const uid = auth.currentUser?.uid;
+        if (uid) saveMessage(uid, aiMsg);
+      }
+    } catch {
+      // Silencioso — no romper si falla el saludo de regreso
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userName, locale, voiceEnabled, speak]);
+
+  // ── Apertura automática (primera vez, sin historial) ─────────────────────
   useEffect(() => {
     if (hasOpened.current) return;
     hasOpened.current = true;
