@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import { useVoice } from "@/hooks/useVoice";
 import { loadConversation, saveMessage } from "@/lib/firestore";
 
@@ -27,31 +26,40 @@ function TypingIndicator() {
 }
 
 export default function AIChat({ user, locale = "es", voiceEnabled = false, voiceKey = "es-MX" }) {
-  const [messages,    setMessages]   = useState([]);
-  const [input,       setInput]      = useState("");
-  const [isLoading,   setIsLoading]  = useState(false);
-  const [isListening, setIsListening]= useState(false);
-  const [error,       setError]      = useState("");
+  const [messages,    setMessages]    = useState([]);
+  const [input,       setInput]       = useState("");
+  const [isLoading,   setIsLoading]   = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [error,       setError]       = useState("");
 
   const hasOpened      = useRef(false);
   const endRef         = useRef(null);
   const inputRef       = useRef(null);
   const recognitionRef = useRef(null);
 
-  // Prioriza el prop user (viene del store), luego Firebase Auth
-  const userName = user?.name || user?.displayName || user?.email?.split("@")[0]
+  // Refs para que el efecto de apertura siempre tenga valores frescos
+  const voiceEnabledRef = useRef(voiceEnabled);
+  const localeRef       = useRef(locale);
+  const userNameRef     = useRef("");
+
+  // Actualizar refs en cada render
+  voiceEnabledRef.current = voiceEnabled;
+  localeRef.current       = locale;
+  userNameRef.current     = user?.name || user?.displayName || user?.email?.split("@")[0]
     || auth.currentUser?.displayName
     || auth.currentUser?.email?.split("@")[0] || "";
 
   const { speak, stop, speaking } = useVoice(voiceKey, voiceEnabled);
+  const speakRef = useRef(speak);
+  speakRef.current = speak;
 
   // Scroll automático
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // ── Función genérica para llamar al API ──────────────────────────────────
-  const fetchAPI = useCallback(async (body) => {
+  // ── Llamada al API (siempre usa refs para valores frescos) ───────────────
+  const doFetch = async (body) => {
     const token = await auth.currentUser?.getIdToken(true).catch(() => null);
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -59,96 +67,86 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ ...body, userName: userName || undefined, locale }),
+      body: JSON.stringify({
+        ...body,
+        userName: userNameRef.current || undefined,
+        locale: localeRef.current,
+      }),
     });
     let data;
     try { data = await response.json(); } catch { data = { error: "invalid_server_response" }; }
     return data;
-  }, [userName, locale]);
+  };
 
-  // ── Agregar mensaje de IA al estado y guardarlo ──────────────────────────
-  const addAIMessage = useCallback((text) => {
+  const addAIMessage = (text, uid) => {
     const aiMsg = { role: "assistant", content: text, timestamp: Date.now() };
     setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
-    if (voiceEnabled) speak(text);
-    const uid = auth.currentUser?.uid;
+    if (voiceEnabledRef.current) speakRef.current(text);
     if (uid) saveMessage(uid, aiMsg);
-  }, [voiceEnabled, speak]);
+  };
 
-  // ── callAPI normal ────────────────────────────────────────────────────────
+  // ── callAPI ───────────────────────────────────────────────────────────────
   const callAPI = useCallback(async (messagesPayload, isOpening = false) => {
     setIsLoading(true);
     setError("");
     try {
-      const data = await fetchAPI({ messages: messagesPayload, isOpening });
+      const data = await doFetch({ messages: messagesPayload, isOpening });
       if (data?.reply?.trim()) {
-        addAIMessage(data.reply.trim());
+        addAIMessage(data.reply.trim(), auth.currentUser?.uid);
       } else {
-        setError(getFriendlyError(data?.error ?? "unknown_error", locale));
+        setError(getFriendlyError(data?.error ?? "unknown_error", localeRef.current));
       }
     } catch {
-      setError(getFriendlyError("network_error", locale));
+      setError(getFriendlyError("network_error", localeRef.current));
     } finally {
       setIsLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [fetchAPI, addAIMessage, locale]);
+  }, []); // eslint-disable-line
 
-  // ── callAPIReturn — saludo de regreso con historial ──────────────────────
-  const callAPIReturn = useCallback(async (recentHistory) => {
+  // ── callAPIReturn ─────────────────────────────────────────────────────────
+  const callAPIReturn = useCallback(async (recentHistory, uid) => {
     setIsLoading(true);
-    setError("");
     try {
-      const data = await fetchAPI({
+      const data = await doFetch({
         messages: recentHistory.map((m) => ({ role: m.role, content: m.content })),
         isReturn: true,
       });
       if (data?.reply?.trim()) {
-        addAIMessage(data.reply.trim());
+        addAIMessage(data.reply.trim(), uid);
       }
     } catch {
-      // Silencioso — no romper si falla el saludo de regreso
+      // silencioso
     } finally {
       setIsLoading(false);
     }
-  }, [fetchAPI, addAIMessage]);
-
-  // ── Efecto de apertura — espera a que Firebase Auth esté listo ──────────
-  useEffect(() => {
-    if (hasOpened.current) return;
-
-    // onAuthStateChanged dispara una vez con el usuario real (o null)
-    // Esto garantiza que auth.currentUser ya tiene valor antes de consultar Firestore
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      unsubscribe(); // solo necesitamos el primer evento
-
-      if (hasOpened.current) return;
-      hasOpened.current = true;
-
-      const uid = firebaseUser?.uid;
-
-      if (uid) {
-        loadConversation(uid)
-          .then((history) => {
-            if (history && history.length > 0) {
-              setMessages(history);
-              callAPIReturn(history.slice(-6));
-            } else {
-              callAPI([{ role: "user", content: "__OPENING__" }], true);
-            }
-          })
-          .catch(() => {
-            callAPI([{ role: "user", content: "__OPENING__" }], true);
-          });
-      } else {
-        callAPI([{ role: "user", content: "__OPENING__" }], true);
-      }
-    });
-
-    return () => unsubscribe();
   }, []); // eslint-disable-line
 
-  // ── Enviar mensaje de texto ───────────────────────────────────────────────
+  // ── Efecto de apertura único ──────────────────────────────────────────────
+  // Usa user?.uid del prop (ya disponible desde el store) — no depende de auth.currentUser
+  useEffect(() => {
+    if (hasOpened.current) return;
+    hasOpened.current = true;
+
+    const uid = user?.uid;
+
+    if (uid) {
+      loadConversation(uid)
+        .then((history) => {
+          if (history && history.length > 0) {
+            setMessages(history);
+            callAPIReturn(history.slice(-6), uid);
+          } else {
+            callAPI([{ role: "user", content: "__OPENING__" }], true);
+          }
+        })
+        .catch(() => callAPI([{ role: "user", content: "__OPENING__" }], true));
+    } else {
+      callAPI([{ role: "user", content: "__OPENING__" }], true);
+    }
+  }, [user?.uid]); // depende del uid — cuando llegue del store, corre
+
+  // ── Enviar mensaje ────────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -157,7 +155,7 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInput("");
-    const uid = auth.currentUser?.uid;
+    const uid = auth.currentUser?.uid || user?.uid;
     if (uid) saveMessage(uid, userMsg);
 
     const payload = updatedMessages
@@ -165,14 +163,13 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       .map((m) => ({ role: m.role, content: m.content }));
 
     await callAPI(payload, false);
-  }, [input, isLoading, messages, callAPI]);
+  }, [input, isLoading, messages, callAPI, user?.uid]);
 
-  // ── Reconocimiento de voz ─────────────────────────────────────────────────
+  // ── Voz entrada ───────────────────────────────────────────────────────────
   const startListening = useCallback(() => {
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
-
     const recognition = new SR();
     recognitionRef.current = recognition;
     const langMap = { es: "es-MX", pt: "pt-BR", en: "en-US" };
@@ -185,8 +182,8 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     recognition.onresult = (e) => {
       const transcript = e.results[0]?.[0]?.transcript?.trim();
       if (!transcript) return;
+      const uid = auth.currentUser?.uid || user?.uid;
       const userMsg = { role: "user", content: transcript, timestamp: Date.now() };
-      const uid = auth.currentUser?.uid;
       if (uid) saveMessage(uid, userMsg);
       setMessages((prev) => {
         const updated = Array.isArray(prev) ? [...prev, userMsg] : [userMsg];
@@ -198,7 +195,7 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       });
     };
     recognition.start();
-  }, [locale, callAPI]);
+  }, [locale, callAPI, user?.uid]);
 
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
@@ -229,8 +226,8 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
           </div>
         </div>
         {voiceEnabled && (
-          <button onClick={speaking ? stop : undefined} title={speaking ? "Detener" : "Voz activa"}
-            style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: speaking ? "rgba(99,102,241,0.25)" : "rgba(99,102,241,0.1)", color: speaking ? "#818cf8" : "var(--text-muted)", cursor: speaking ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, transition: "all .2s", animation: speaking ? "pulse-voice 1.5s ease-in-out infinite" : "none" }}>
+          <button onClick={speaking ? stop : undefined}
+            style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: speaking ? "rgba(99,102,241,0.25)" : "rgba(99,102,241,0.1)", color: speaking ? "#818cf8" : "var(--text-muted,#64748b)", cursor: speaking ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, transition: "all .2s", animation: speaking ? "pulse-voice 1.5s ease-in-out infinite" : "none" }}>
             {speaking ? "🔊" : "🔈"}
           </button>
         )}
@@ -270,7 +267,7 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       {/* Input */}
       <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border,rgba(255,255,255,0.08))", alignItems: "flex-end" }}>
         <button onClick={isListening ? stopListening : startListening} disabled={isLoading}
-          style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: isListening ? "rgba(239,68,68,0.15)" : "var(--bg-card,rgba(255,255,255,0.05))", border: isListening ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border,rgba(255,255,255,0.1))", color: isListening ? "#f87171" : "var(--text-muted)", cursor: isLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, transition: "all .2s", animation: isListening ? "pulse-mic 1s ease-in-out infinite" : "none", opacity: isLoading ? 0.5 : 1 }}>
+          style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: isListening ? "rgba(239,68,68,0.15)" : "var(--bg-card,rgba(255,255,255,0.05))", border: isListening ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border,rgba(255,255,255,0.1))", color: isListening ? "#f87171" : "var(--text-muted,#64748b)", cursor: isLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, transition: "all .2s", animation: isListening ? "pulse-mic 1s ease-in-out infinite" : "none", opacity: isLoading ? 0.5 : 1 }}>
           {isListening ? "⏹" : "🎙️"}
         </button>
 
@@ -308,9 +305,9 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
 
 function getFriendlyError(code, locale = "es") {
   const errors = {
-    es: { unauthorized_no_token: "Necesitas iniciar sesión. 🔐", network_error: "Sin conexión. Verifica tu internet.", default: "Algo salió mal. Intenta de nuevo." },
-    pt: { unauthorized_no_token: "Você precisa fazer login. 🔐", network_error: "Sem conexão.", default: "Algo deu errado. Tente novamente." },
-    en:  { unauthorized_no_token: "You need to log in. 🔐", network_error: "No connection.", default: "Something went wrong. Try again." },
+    es: { unauthorized_no_token: "Necesitas iniciar sesión. 🔐", network_error: "Sin conexión.", default: "Algo salió mal. Intenta de nuevo." },
+    pt: { unauthorized_no_token: "Você precisa fazer login. 🔐", network_error: "Sem conexão.", default: "Algo deu errado." },
+    en:  { unauthorized_no_token: "You need to log in. 🔐", network_error: "No connection.", default: "Something went wrong." },
   };
   const map = errors[locale] ?? errors.es;
   return map[code] ?? map.default;
