@@ -82,7 +82,10 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
   const addAIMessage = (text, uid) => {
     const aiMsg = { role: "assistant", content: text, timestamp: Date.now() };
     setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
-    if (voiceEnabledRef.current) speakRef.current(text);
+    // Leer refs en el momento de ejecución para tener valores frescos
+    try {
+      if (voiceEnabledRef.current && speakRef.current) speakRef.current(text);
+    } catch { /* voz no crítica */ }
     if (uid) saveMessage(uid, aiMsg);
   };
 
@@ -125,13 +128,10 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
 
       if (data?.reply?.trim()) {
         addAIMessage(data.reply.trim(), uid);
-      } else {
-        // Si falla, disparar apertura normal como fallback
-        callAPI([{ role: "user", content: "__OPENING__" }], true);
       }
+      // Si falla silenciosamente — el historial ya está visible, no hace falta fallback
     } catch {
-      // Fallback: apertura estándar si falla el saludo de regreso
-      callAPI([{ role: "user", content: "__OPENING__" }], true);
+      // Silencioso — no disparar apertura encima del historial cargado
     } finally {
       setIsLoading(false);
     }
