@@ -2,22 +2,35 @@
 import { useState } from "react";
 import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { saveTermsAcceptance } from "@/lib/firestore";
 import BackgroundOrbs from "@/components/ui/BackgroundOrbs";
 import LanguageBadge  from "@/components/ui/LanguageBadge";
 import Spinner        from "@/components/ui/Spinner";
+import TermsModal     from "@/components/ui/TermsModal";
 
 export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
-  const [mode,     setMode]     = useState("login");
-  const [name,     setName]     = useState("");
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState("");
+  const [mode,          setMode]         = useState("login");
+  const [name,          setName]         = useState("");
+  const [email,         setEmail]        = useState("");
+  const [password,      setPassword]     = useState("");
+  const [loading,       setLoading]      = useState(false);
+  const [error,         setError]        = useState("");
+  const [termsAccepted, setTermsAccepted]= useState(false);
+  const [showTerms,     setShowTerms]    = useState(false);
+
+  const locale = langInfo?.locale || "es";
+
+  const termsLabel = {
+    es: { text: "He leído y acepto los", link: "Términos de Uso y Política de Privacidad", required: "Debes aceptar los términos para continuar." },
+    pt: { text: "Li e aceito os", link: "Termos de Uso e Política de Privacidade", required: "Você deve aceitar os termos para continuar." },
+    en: { text: "I have read and agree to the", link: "Terms of Use and Privacy Policy", required: "You must accept the terms to continue." },
+  }[locale] || { text: "He leído y acepto los", link: "Términos de Uso", required: "Debes aceptar los términos." };
 
   // ── Login / Registro con email ─────────────────────────────────────────────
   const submit = async () => {
     if (!email || !password) return setError(t.fillFields);
     if (mode === "signup" && !name) return setError(t.enterName);
+    if (mode === "signup" && !termsAccepted) return setError(termsLabel.required);
     setError("");
     setLoading(true);
     try {
@@ -29,6 +42,8 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
         const result = await createUserWithEmailAndPassword(auth, email, password);
         firebaseUser = result.user;
         await updateProfile(firebaseUser, { displayName: name });
+        // Guardar aceptación de términos en Firestore
+        await saveTermsAcceptance(firebaseUser.uid, locale);
       }
       onLogin({
         name:      firebaseUser.displayName || name || email.split("@")[0],
@@ -38,12 +53,12 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
       });
     } catch (err) {
       const msg = {
-        "auth/user-not-found":    "No existe una cuenta con ese correo.",
-        "auth/wrong-password":    "Contraseña incorrecta.",
+        "auth/user-not-found":       "No existe una cuenta con ese correo.",
+        "auth/wrong-password":       "Contraseña incorrecta.",
         "auth/email-already-in-use": "Ese correo ya tiene una cuenta. Inicia sesión.",
-        "auth/weak-password":     "La contraseña debe tener al menos 6 caracteres.",
-        "auth/invalid-email":     "El correo no es válido.",
-        "auth/invalid-credential":"Correo o contraseña incorrectos.",
+        "auth/weak-password":        "La contraseña debe tener al menos 6 caracteres.",
+        "auth/invalid-email":        "El correo no es válido.",
+        "auth/invalid-credential":   "Correo o contraseña incorrectos.",
       };
       setError(msg[err.code] || "Error al iniciar sesión. Intenta de nuevo.");
     } finally {
@@ -51,15 +66,19 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
     }
   };
 
-  // ── Login con Google real ──────────────────────────────────────────────────
+  // ── Login con Google ──────────────────────────────────────────────────────
   const googleLogin = async () => {
+    if (mode === "signup" && !termsAccepted) return setError(termsLabel.required);
     setError("");
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      const result      = await signInWithPopup(auth, provider);
+      const result       = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
+      if (mode === "signup") {
+        await saveTermsAcceptance(firebaseUser.uid, locale);
+      }
       onLogin({
         name:      firebaseUser.displayName || firebaseUser.email.split("@")[0],
         email:     firebaseUser.email,
@@ -80,6 +99,11 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
   return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24, position:"relative" }}>
       <BackgroundOrbs />
+
+      {showTerms && (
+        <TermsModal locale={locale} onClose={() => setShowTerms(false)} />
+      )}
+
       <div style={{ position:"relative", zIndex:1, width:"100%", maxWidth:430 }}>
 
         {/* Language badge */}
@@ -89,20 +113,16 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
 
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:28 }}>
-          <div style={{
-            width:56, height:56, borderRadius:16, margin:"0 auto 14px",
-            background:"linear-gradient(135deg,#6366f1,#06b6d4)",
-            display:"flex", alignItems:"center", justifyContent:"center", fontSize:28,
-          }}>🌿</div>
+          <div style={{ width:56, height:56, borderRadius:16, margin:"0 auto 14px", background:"linear-gradient(135deg,#6366f1,#06b6d4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28 }}>🌿</div>
           <h1 className="logo-text" style={{ fontSize:26, marginBottom:6 }}>{t.appName}</h1>
           <p style={{ color:"var(--text-muted)", fontSize:14 }}>{t.tagline}</p>
         </div>
 
         <div className="glass" style={{ padding:32 }}>
-          {/* Tabs login / registro */}
+          {/* Tabs */}
           <div style={{ display:"flex", gap:4, marginBottom:24, background:"var(--bg-secondary)", borderRadius:10, padding:4 }}>
             {[["login", t.signInBtn], ["signup", t.createAccount]].map(([m, label]) => (
-              <button key={m} onClick={() => { setMode(m); setError(""); }} style={{
+              <button key={m} onClick={() => { setMode(m); setError(""); setTermsAccepted(false); }} style={{
                 flex:1, padding:"8px", borderRadius:7, border:"none", cursor:"pointer",
                 fontFamily:"var(--font-main)", fontSize:13, fontWeight:500,
                 background: mode === m ? "var(--accent)" : "transparent",
@@ -115,28 +135,40 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
           <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
             {mode === "signup" && (
               <div>
-                <label style={{ display:"block", fontSize:11, color:"var(--text-muted)", marginBottom:5, fontFamily:"var(--font-main)" }}>
-                  {t.nameLabel}
-                </label>
-                <input className="custom-input" placeholder={t.namePlaceholder}
-                  value={name} onChange={e => setName(e.target.value)} />
+                <label style={{ display:"block", fontSize:11, color:"var(--text-muted)", marginBottom:5, fontFamily:"var(--font-main)" }}>{t.nameLabel}</label>
+                <input className="custom-input" placeholder={t.namePlaceholder} value={name} onChange={e => setName(e.target.value)} />
               </div>
             )}
             <div>
-              <label style={{ display:"block", fontSize:11, color:"var(--text-muted)", marginBottom:5, fontFamily:"var(--font-main)" }}>
-                {t.emailLabel}
-              </label>
-              <input className="custom-input" type="email" placeholder={t.emailPlaceholder}
-                value={email} onChange={e => setEmail(e.target.value)} />
+              <label style={{ display:"block", fontSize:11, color:"var(--text-muted)", marginBottom:5, fontFamily:"var(--font-main)" }}>{t.emailLabel}</label>
+              <input className="custom-input" type="email" placeholder={t.emailPlaceholder} value={email} onChange={e => setEmail(e.target.value)} />
             </div>
             <div>
-              <label style={{ display:"block", fontSize:11, color:"var(--text-muted)", marginBottom:5, fontFamily:"var(--font-main)" }}>
-                {t.passwordLabel}
-              </label>
-              <input className="custom-input" type="password" placeholder={t.passwordPlaceholder}
-                value={password} onChange={e => setPassword(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && submit()} />
+              <label style={{ display:"block", fontSize:11, color:"var(--text-muted)", marginBottom:5, fontFamily:"var(--font-main)" }}>{t.passwordLabel}</label>
+              <input className="custom-input" type="password" placeholder={t.passwordPlaceholder} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} />
             </div>
+
+            {/* Checkbox T&C — solo en registro */}
+            {mode === "signup" && (
+              <div style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"10px 14px", background:"var(--bg-secondary)", borderRadius:10, border: `1px solid ${termsAccepted ? "var(--accent)" : "var(--border)"}`, transition:"border-color .2s" }}>
+                <input
+                  type="checkbox"
+                  id="terms-check"
+                  checked={termsAccepted}
+                  onChange={e => setTermsAccepted(e.target.checked)}
+                  style={{ width:16, height:16, marginTop:2, accentColor:"var(--accent,#6366f1)", flexShrink:0, cursor:"pointer" }}
+                />
+                <label htmlFor="terms-check" style={{ fontSize:12, color:"var(--text-secondary)", lineHeight:1.5, cursor:"pointer" }}>
+                  {termsLabel.text}{" "}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setShowTerms(true); }}
+                    style={{ background:"none", border:"none", color:"var(--accent,#6366f1)", fontSize:12, cursor:"pointer", padding:0, textDecoration:"underline", fontFamily:"inherit" }}>
+                    {termsLabel.link}
+                  </button>
+                </label>
+              </div>
+            )}
 
             {/* Error */}
             {error && (
@@ -145,9 +177,8 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
               </div>
             )}
 
-            {/* Botón principal */}
             <button className="btn btn-primary" style={{ width:"100%", marginTop:4, padding:"13px" }}
-              onClick={submit} disabled={loading}>
+              onClick={submit} disabled={loading || (mode === "signup" && !termsAccepted)}>
               {loading ? <Spinner size={18} /> : (mode === "login" ? t.signInBtn : t.createAccount)}
             </button>
 
@@ -157,9 +188,8 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
               <div style={{ flex:1, height:1, background:"var(--border)" }} />
             </div>
 
-            {/* Google */}
             <button className="btn btn-ghost" style={{ width:"100%" }}
-              onClick={googleLogin} disabled={loading}>
+              onClick={googleLogin} disabled={loading || (mode === "signup" && !termsAccepted)}>
               {loading ? <Spinner size={18} /> : <>{`🔵 ${t.googleBtn}`}</>}
             </button>
           </div>
