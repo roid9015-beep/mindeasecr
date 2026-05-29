@@ -109,15 +109,29 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
   const callAPIReturn = useCallback(async (recentHistory, uid) => {
     setIsLoading(true);
     try {
+      // Filtrar solo mensajes válidos con roles alternados para Anthropic
+      const validHistory = recentHistory
+        .filter((m) => (m.role === "user" || m.role === "assistant")
+          && typeof m.content === "string"
+          && m.content.trim()
+          && m.content !== "__OPENING__");
+
       const data = await doFetch({
-        messages: recentHistory.map((m) => ({ role: m.role, content: m.content })),
+        messages: validHistory.length > 0
+          ? validHistory.map((m) => ({ role: m.role, content: m.content }))
+          : [{ role: "user", content: "El usuario regresó." }],
         isReturn: true,
       });
+
       if (data?.reply?.trim()) {
         addAIMessage(data.reply.trim(), uid);
+      } else {
+        // Si falla, disparar apertura normal como fallback
+        callAPI([{ role: "user", content: "__OPENING__" }], true);
       }
     } catch {
-      // silencioso
+      // Fallback: apertura estándar si falla el saludo de regreso
+      callAPI([{ role: "user", content: "__OPENING__" }], true);
     } finally {
       setIsLoading(false);
     }
