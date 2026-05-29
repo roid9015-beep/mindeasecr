@@ -283,29 +283,27 @@ Sin markdown, sin títulos. Solo texto cálido y directo. Usá el nombre siempre
       };
 
       const returnPrompt = returnPrompts[locale] || returnPrompts.en;
-      let validHistory = messages
+      // Construir resumen del historial reciente para el contexto
+      const historyContext = messages
         .filter(m => (m.role === "user" || m.role === "assistant")
           && typeof m.content === "string"
           && m.content.trim()
           && m.content !== "__OPENING__")
-        .slice(-6);
+        .slice(-8)
+        .map(m => `${m.role === "user" ? "Paciente" : "MindEase"}: ${m.content.slice(0, 200)}`)
+        .join("\n");
 
-      // Anthropic requiere que el primer mensaje sea siempre "user"
-      // Si el historial empieza con "assistant", lo descartamos hasta encontrar un "user"
-      while (validHistory.length > 0 && validHistory[0].role === "assistant") {
-        validHistory = validHistory.slice(1);
-      }
-
-      // Si quedó vacío después del filtro, usar mensaje genérico
-      if (validHistory.length === 0) {
-        validHistory = [{ role: "user", content: "El usuario regresó a la app." }];
-      }
+      // El historial va en el system prompt como contexto — no como mensajes
+      const fullReturnPrompt = returnPrompt + (historyContext
+        ? `\n\nCONTEXTO DE LA ÚLTIMA CONVERSACIÓN:\n${historyContext}`
+        : "");
 
       const response = await anthropic.messages.create({
         model: "claude-opus-4-5",
         max_tokens: 400,
-        system: returnPrompt,
-        messages: validHistory,
+        system: fullReturnPrompt,
+        // Un solo mensaje trigger — el AI NO está respondiendo a una conversación, está abriendo
+        messages: [{ role: "user", content: "El usuario acaba de volver a la app." }],
       });
       const reply = response.content?.[0]?.text?.trim();
       if (!reply) return NextResponse.json({ error: "empty_response_from_ai" }, { status: 500 });
