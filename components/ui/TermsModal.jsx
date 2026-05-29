@@ -1,4 +1,6 @@
 "use client";
+import { auth } from "@/lib/firebase";
+import { saveTermsAcceptance } from "@/lib/firestore";
 
 const TERMS = {
   es: {
@@ -220,6 +222,12 @@ As conversas são processadas pela API da Anthropic (Claude). MindEase AI não v
 export default function TermsModal({ locale = "es", onClose }) {
   const content = TERMS[locale] || TERMS.es;
 
+  const handleAccept = () => {
+    const uid = auth.currentUser?.uid;
+    if (uid) saveTermsAcceptance(uid, locale);
+    onClose();
+  };
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 300,
@@ -298,7 +306,7 @@ export default function TermsModal({ locale = "es", onClose }) {
           padding: "16px 24px", borderTop: "1px solid var(--border,rgba(255,255,255,0.08))",
           flexShrink: 0,
         }}>
-          <button onClick={onClose} className="btn btn-primary" style={{ width: "100%", padding: "12px" }}>
+          <button onClick={handleAccept} className="btn btn-primary" style={{ width: "100%", padding: "12px" }}>
             {locale === "es" ? "Entendido y acepto" : locale === "pt" ? "Entendido e aceito" : "I understand and agree"}
           </button>
         </div>
