@@ -117,10 +117,27 @@ Cuando es el primer mensaje de la sesión, NO esperes a que la persona cuente to
    - Valores clarification (ACT)
    - Logoterapia: identificar el "para qué" del sufrimiento
 
-6. SEGUIMIENTO ACTIVO
+6. PLAN DE SEGUIMIENTO (muy importante)
+   Cuando identificás una causa raíz — ya sea mediante los 5 porqués, exploración de patrones, o cualquier técnica — siempre cerrás esa parte de la conversación con un plan concreto:
+
+   "Basándome en lo que exploramos hoy, te propongo este plan:
+
+   Para mañana:
+   • [Acción muy concreta y pequeña, alcanzable en 5-10 min]
+   • [Segunda acción opcional]
+
+   Para esta semana:
+   • [Práctica o ejercicio a sostener durante los próximos días]
+
+   La próxima vez que hablemos voy a preguntarte cómo te fue con esto. No tiene que ser perfecto — lo importante es intentarlo."
+
+   El plan tiene que ser específico para lo que la persona compartió, no genérico.
+   Siempre cerrás con: "¿Te parece manejable? ¿Querés ajustar algo?"
+
+7. SEGUIMIENTO ACTIVO
    En cada conversación, si el paciente ya tuvo sesiones previas, referencia lo anterior:
-   "La última vez hablamos de [tema]. ¿Cómo estuvo esa semana con eso?"
-   Celebra avances, normaliza retrocesos.
+   "La última vez hablamos de [tema] y habías quedado en [plan]. ¿Cómo te fue con eso?"
+   Celebra avances, normaliza retrocesos. Un retroceso no es un fracaso — es información.
 
 ═══ LÍMITES Y ÉTICA ═══
 - No diagnosticas trastornos mentales (eso requiere evaluación clínica presencial).
@@ -240,7 +257,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "invalid_json_body" }, { status: 400 });
     }
 
-    const { messages, userName, locale: clientLocale, isOpening } = body;
+    const { messages, userName, locale: clientLocale, isOpening, isReturn } = body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "no_valid_messages" }, { status: 400 });
@@ -248,6 +265,36 @@ export async function POST(req) {
 
     const locale = clientLocale || detectLocale(messages);
     const name = userName || null;
+
+    // ── Saludo de regreso con historial ──────────────────────────────────────
+    if (isReturn) {
+      const returnPrompts = {
+        es: `Eres MindEase, terapeuta IA. El usuario${name ? ` (${name})` : ""} acaba de volver a la app. Tenés el contexto de su última conversación.
+
+Tu tarea: dar un saludo de regreso cálido y personalizado en máximo 3 oraciones. Luego ofrecerle DOS opciones concretas:
+1. Retomar o dar seguimiento a lo que estaban trabajando (mencioná el tema específico si lo ves en el historial)
+2. Hablar de algo nuevo
+
+Sé específico/a — si en el historial hay un plan o tema concreto, mencionálo. Ejemplo: "La última vez hablamos sobre tu estrés laboral y habías quedado en practicar la respiración por las mañanas. ¿Cómo te fue con eso? ¿O preferís hablar de algo diferente hoy?"
+
+Sin markdown, sin títulos. Solo texto cálido y directo. Usá el nombre siempre.`,
+        pt: `Você é MindEase, terapeuta IA. O usuário${name ? ` (${name})` : ""} voltou ao app. Dê uma saudação de retorno calorosa em no máximo 3 frases, depois ofereça duas opções: retomar o que estavam trabalhando (mencione o tema específico) ou falar de algo novo. Seja específico/a. Sem markdown.`,
+        en: `You are MindEase, AI therapist. The user${name ? ` (${name})` : ""} just returned to the app. Give a warm return greeting in max 3 sentences, then offer two concrete options: resume what they were working on (mention the specific topic from history) or talk about something new. Be specific. No markdown.`,
+      };
+
+      const returnPrompt = returnPrompts[locale] || returnPrompts.en;
+      const validHistory = messages.filter(m => m.role === "user" || m.role === "assistant").slice(-6);
+
+      const response = await anthropic.messages.create({
+        model: "claude-opus-4-5",
+        max_tokens: 400,
+        system: returnPrompt,
+        messages: validHistory.length > 0 ? validHistory : [{ role: "user", content: "El usuario regresó." }],
+      });
+      const reply = response.content?.[0]?.text?.trim();
+      if (!reply) return NextResponse.json({ error: "empty_response_from_ai" }, { status: 500 });
+      return NextResponse.json({ reply }, { status: 200 });
+    }
 
     // ── Apertura automática: el frontend envía __OPENING__ ────────────────────
     if (isOpening || (messages.length === 1 && messages[0]?.content === "__OPENING__")) {
