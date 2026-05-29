@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { auth } from "@/lib/firebase";
 import { useVoice } from "@/hooks/useVoice";
+import { loadConversation, saveMessage } from "@/lib/firestore";
 
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -47,6 +48,18 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
+  // ── Cargar historial de Firestore al entrar ───────────────────────────────
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    loadConversation(uid).then((history) => {
+      if (history.length > 0) {
+        setMessages(history);
+        hasOpened.current = true; // ya hay historial — no disparar apertura
+      }
+    });
+  }, []); // eslint-disable-line
+
   // ── callAPI — definido PRIMERO para que las funciones que lo usen puedan referenciarlo ──
   const callAPI = useCallback(async (messagesPayload, isOpening = false) => {
     setIsLoading(true);
@@ -76,6 +89,9 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         const aiMsg = { role: "assistant", content: data.reply.trim(), timestamp: Date.now() };
         setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
         if (voiceEnabled) speak(data.reply.trim());
+        // Guardar respuesta de IA en Firestore
+        const uid = auth.currentUser?.uid;
+        if (uid) saveMessage(uid, aiMsg);
       } else {
         setError(getFriendlyError(data.error ?? "unknown_error", locale));
       }
@@ -103,6 +119,9 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInput("");
+    // Guardar mensaje del usuario en Firestore
+    const uid = auth.currentUser?.uid;
+    if (uid) saveMessage(uid, userMsg);
 
     const payload = updatedMessages
       .filter((m) => (m.role === "user" || m.role === "assistant") && m.content !== "__OPENING__")
@@ -133,6 +152,9 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       const transcript = e.results[0]?.[0]?.transcript?.trim();
       if (!transcript) return;
       const userMsg = { role: "user", content: transcript, timestamp: Date.now() };
+      // Guardar mensaje de voz en Firestore
+      const uid = auth.currentUser?.uid;
+      if (uid) saveMessage(uid, userMsg);
       setMessages((prev) => {
         const updated = Array.isArray(prev) ? [...prev, userMsg] : [userMsg];
         const payload = updated
