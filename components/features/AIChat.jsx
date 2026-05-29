@@ -20,17 +20,17 @@ function TypingIndicator() {
           ))}
         </div>
       </div>
-      <style>{`@keyframes mindease-typing { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-8px);opacity:1} }`}</style>
+      <style>{`@keyframes mindease-typing{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-8px);opacity:1}}`}</style>
     </div>
   );
 }
 
 export default function AIChat({ user, locale = "es", voiceEnabled = false, voiceKey = "es-MX" }) {
-  const [messages,   setMessages]  = useState([]);
-  const [input,      setInput]     = useState("");
-  const [isLoading,  setIsLoading] = useState(false);
-  const [isListening,setIsListening] = useState(false);
-  const [error,      setError]     = useState("");
+  const [messages,    setMessages]   = useState([]);
+  const [input,       setInput]      = useState("");
+  const [isLoading,   setIsLoading]  = useState(false);
+  const [isListening, setIsListening]= useState(false);
+  const [error,       setError]      = useState("");
 
   const hasOpened      = useRef(false);
   const endRef         = useRef(null);
@@ -48,55 +48,41 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // ── Cargar historial de Firestore al entrar ───────────────────────────────
-  useEffect(() => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-    loadConversation(uid).then((history) => {
-      if (history.length > 0) {
-        setMessages(history);
-        hasOpened.current = true; // marcar para que no dispare apertura estándar
-        // Disparar saludo de regreso con contexto del historial
-        const lastMessages = history.slice(-6); // últimos 6 mensajes como contexto
-        callAPIReturn(lastMessages);
-      }
+  // ── Función genérica para llamar al API ──────────────────────────────────
+  const fetchAPI = useCallback(async (body) => {
+    const token = await auth.currentUser?.getIdToken(true).catch(() => null);
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ ...body, userName: userName || undefined, locale }),
     });
-  }, []); // eslint-disable-line
+    let data;
+    try { data = await response.json(); } catch { data = { error: "invalid_server_response" }; }
+    return data;
+  }, [userName, locale]);
 
-  // ── callAPI — definido PRIMERO para que las funciones que lo usen puedan referenciarlo ──
+  // ── Agregar mensaje de IA al estado y guardarlo ──────────────────────────
+  const addAIMessage = useCallback((text) => {
+    const aiMsg = { role: "assistant", content: text, timestamp: Date.now() };
+    setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
+    if (voiceEnabled) speak(text);
+    const uid = auth.currentUser?.uid;
+    if (uid) saveMessage(uid, aiMsg);
+  }, [voiceEnabled, speak]);
+
+  // ── callAPI normal ────────────────────────────────────────────────────────
   const callAPI = useCallback(async (messagesPayload, isOpening = false) => {
     setIsLoading(true);
     setError("");
     try {
-      const token = await auth.currentUser?.getIdToken(true).catch(() => null);
-
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          messages: messagesPayload,
-          userName: userName || undefined,
-          locale,
-          isOpening,
-        }),
-      });
-
-      let data;
-      try { data = await response.json(); } catch { data = { error: "invalid_server_response" }; }
-      if (!data || typeof data !== "object") data = { error: "malformed_response" };
-
-      if (data.reply && typeof data.reply === "string" && data.reply.trim()) {
-        const aiMsg = { role: "assistant", content: data.reply.trim(), timestamp: Date.now() };
-        setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
-        if (voiceEnabled) speak(data.reply.trim());
-        // Guardar respuesta de IA en Firestore
-        const uid = auth.currentUser?.uid;
-        if (uid) saveMessage(uid, aiMsg);
+      const data = await fetchAPI({ messages: messagesPayload, isOpening });
+      if (data?.reply?.trim()) {
+        addAIMessage(data.reply.trim());
       } else {
-        setError(getFriendlyError(data.error ?? "unknown_error", locale));
+        setError(getFriendlyError(data?.error ?? "unknown_error", locale));
       }
     } catch {
       setError(getFriendlyError("network_error", locale));
@@ -104,48 +90,51 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       setIsLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [userName, locale, voiceEnabled, speak]);
+  }, [fetchAPI, addAIMessage, locale]);
 
-  // ── Saludo de regreso con contexto del historial ─────────────────────────
+  // ── callAPIReturn — saludo de regreso con historial ──────────────────────
   const callAPIReturn = useCallback(async (recentHistory) => {
     setIsLoading(true);
     setError("");
     try {
-      const token = await auth.currentUser?.getIdToken(true).catch(() => null);
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          messages: recentHistory.map((m) => ({ role: m.role, content: m.content })),
-          userName: userName || undefined,
-          locale,
-          isReturn: true, // señal para saludo de regreso
-        }),
+      const data = await fetchAPI({
+        messages: recentHistory.map((m) => ({ role: m.role, content: m.content })),
+        isReturn: true,
       });
-      let data;
-      try { data = await response.json(); } catch { data = { error: "invalid_server_response" }; }
       if (data?.reply?.trim()) {
-        const aiMsg = { role: "assistant", content: data.reply.trim(), timestamp: Date.now() };
-        setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
-        if (voiceEnabled) speak(data.reply.trim());
-        const uid = auth.currentUser?.uid;
-        if (uid) saveMessage(uid, aiMsg);
+        addAIMessage(data.reply.trim());
       }
     } catch {
       // Silencioso — no romper si falla el saludo de regreso
     } finally {
       setIsLoading(false);
     }
-  }, [userName, locale, voiceEnabled, speak]);
+  }, [fetchAPI, addAIMessage]);
 
-  // ── Apertura automática (primera vez, sin historial) ─────────────────────
+  // ── UN SOLO efecto de apertura — evita condición de carrera ─────────────
   useEffect(() => {
     if (hasOpened.current) return;
     hasOpened.current = true;
-    callAPI([{ role: "user", content: "__OPENING__" }], true);
+
+    const uid = auth.currentUser?.uid;
+
+    if (uid) {
+      // Tiene cuenta → cargar historial primero, luego decidir
+      loadConversation(uid)
+        .then((history) => {
+          if (history && history.length > 0) {
+            setMessages(history);
+            callAPIReturn(history.slice(-6)); // regreso con contexto
+          } else {
+            callAPI([{ role: "user", content: "__OPENING__" }], true); // primera vez
+          }
+        })
+        .catch(() => {
+          callAPI([{ role: "user", content: "__OPENING__" }], true);
+        });
+    } else {
+      callAPI([{ role: "user", content: "__OPENING__" }], true);
+    }
   }, []); // eslint-disable-line
 
   // ── Enviar mensaje de texto ───────────────────────────────────────────────
@@ -157,7 +146,6 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInput("");
-    // Guardar mensaje del usuario en Firestore
     const uid = auth.currentUser?.uid;
     if (uid) saveMessage(uid, userMsg);
 
@@ -168,7 +156,7 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     await callAPI(payload, false);
   }, [input, isLoading, messages, callAPI]);
 
-  // ── Reconocimiento de voz — definido DESPUÉS de callAPI ──────────────────
+  // ── Reconocimiento de voz ─────────────────────────────────────────────────
   const startListening = useCallback(() => {
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -176,21 +164,17 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
 
     const recognition = new SR();
     recognitionRef.current = recognition;
-
     const langMap = { es: "es-MX", pt: "pt-BR", en: "en-US" };
     recognition.lang = langMap[locale] || "es-MX";
     recognition.continuous = false;
     recognition.interimResults = false;
-
     recognition.onstart = () => setIsListening(true);
     recognition.onend   = () => setIsListening(false);
     recognition.onerror = () => setIsListening(false);
-
     recognition.onresult = (e) => {
       const transcript = e.results[0]?.[0]?.transcript?.trim();
       if (!transcript) return;
       const userMsg = { role: "user", content: transcript, timestamp: Date.now() };
-      // Guardar mensaje de voz en Firestore
       const uid = auth.currentUser?.uid;
       if (uid) saveMessage(uid, userMsg);
       setMessages((prev) => {
@@ -202,7 +186,6 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         return updated;
       });
     };
-
     recognition.start();
   }, [locale, callAPI]);
 
@@ -221,7 +204,6 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     en: "Write whatever you want to share...",
   };
 
-  // ── RENDER ────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 140px)", animation: "fadeUp 0.4s ease" }}>
 
@@ -276,34 +258,23 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
 
       {/* Input */}
       <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border,rgba(255,255,255,0.08))", alignItems: "flex-end" }}>
-        <button
-          onClick={isListening ? stopListening : startListening}
-          disabled={isLoading}
-          title={isListening ? (locale === "es" ? "Detener" : "Stop") : (locale === "es" ? "Hablar" : "Speak")}
+        <button onClick={isListening ? stopListening : startListening} disabled={isLoading}
           style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: isListening ? "rgba(239,68,68,0.15)" : "var(--bg-card,rgba(255,255,255,0.05))", border: isListening ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border,rgba(255,255,255,0.1))", color: isListening ? "#f87171" : "var(--text-muted)", cursor: isLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, transition: "all .2s", animation: isListening ? "pulse-mic 1s ease-in-out infinite" : "none", opacity: isLoading ? 0.5 : 1 }}>
           {isListening ? "⏹" : "🎙️"}
         </button>
 
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
+        <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
           placeholder={isListening ? (locale === "es" ? "Escuchando..." : locale === "pt" ? "Ouvindo..." : "Listening...") : (placeholders[locale] ?? placeholders.es)}
-          rows={1}
-          disabled={isLoading || isListening}
+          rows={1} disabled={isLoading || isListening}
           style={{ flex: 1, resize: "none", maxHeight: 120, overflow: input.length > 100 ? "auto" : "hidden", background: "var(--bg-card,rgba(255,255,255,0.05))", border: "1px solid var(--border,rgba(255,255,255,0.1))", borderRadius: 10, color: "var(--text-primary,#f0f1fa)", fontFamily: "var(--font-body,'DM Sans',sans-serif)", fontSize: 15, padding: "12px 16px", outline: "none", transition: "border-color .2s", opacity: (isLoading || isListening) ? 0.6 : 1 }}
           onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
           onBlur={(e)  => (e.target.style.borderColor = "var(--border,rgba(255,255,255,0.1))")}
         />
 
-        <button
-          onClick={sendMessage}
-          disabled={isLoading || !input.trim() || isListening}
+        <button onClick={sendMessage} disabled={isLoading || !input.trim() || isListening}
           style={{ width: 44, height: 44, borderRadius: 10, border: "none", flexShrink: 0, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "white", cursor: "pointer", transition: "all .2s", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", opacity: (isLoading || !input.trim() || isListening) ? 0.5 : 1 }}
           onMouseEnter={(e) => { if (!isLoading && input.trim()) e.currentTarget.style.transform = "translateY(-2px)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}
-        >
+          onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}>
           {isLoading ? <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", animation: "spin .7s linear infinite" }} /> : "→"}
         </button>
       </div>
@@ -315,10 +286,10 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       </p>
 
       <style>{`
-        @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes spin { to{transform:rotate(360deg)} }
-        @keyframes pulse-voice { 0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,0.4)} 50%{box-shadow:0 0 0 8px rgba(99,102,241,0)} }
-        @keyframes pulse-mic { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)} 50%{box-shadow:0 0 0 8px rgba(239,68,68,0)} }
+        @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes pulse-voice{0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,0.4)}50%{box-shadow:0 0 0 8px rgba(99,102,241,0)}}
+        @keyframes pulse-mic{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.4)}50%{box-shadow:0 0 0 8px rgba(239,68,68,0)}}
       `}</style>
     </div>
   );
