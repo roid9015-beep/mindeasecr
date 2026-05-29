@@ -278,8 +278,8 @@ export async function POST(req) {
       return NextResponse.json({ error: "no_valid_messages" }, { status: 400 });
     }
 
-    const isFirstMessage = validMessages.filter((m) => m.role === "user").length === 1;
-    const systemPrompt = buildSystemPrompt(locale, name, isFirstMessage);
+    // La apertura ya se maneja con __OPENING__ — en conversación normal siempre false
+    const systemPrompt = buildSystemPrompt(locale, name, false);
 
     const anthropicMessages = validMessages.map((m) => ({
       role: m.role,
