@@ -86,9 +86,9 @@ export default function Dashboard({ t, locale, user, onNavigate }) {
 
       {/* Racha — si existe */}
       {streakMsg && (
-        <div style={{ background: "linear-gradient(135deg,rgba(251,146,60,0.12),rgba(249,115,22,0.08))", border: "1px solid rgba(251,146,60,0.25)", borderRadius: 14, padding: "11px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 20 }}>🔥</span>
-          <span style={{ fontSize: 13, color: "#fb923c", fontWeight: 600 }}>{streakMsg}</span>
+        <div style={{ background: "linear-gradient(135deg,rgba(251,146,60,0.12),rgba(249,115,22,0.08))", border: "1px solid rgba(251,146,60,0.25)", borderRadius: 14, padding: "13px 18px", marginBottom: 18, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 22 }}>🔥</span>
+          <span style={{ fontSize: 15, color: "#fb923c", fontWeight: 600 }}>{streakMsg}</span>
         </div>
       )}
 
@@ -99,14 +99,14 @@ export default function Dashboard({ t, locale, user, onNavigate }) {
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
             {t.moods.map((mood) => (
               <button key={mood.label} onClick={() => setSelectedMood(mood)} style={{
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                padding: "9px 12px", borderRadius: 12, border: "1px solid",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                padding: "11px 10px", borderRadius: 14, border: "2px solid",
                 borderColor: selectedMood?.label === mood.label ? mood.color : "var(--border)",
                 background: selectedMood?.label === mood.label ? `${mood.color}22` : "transparent",
                 cursor: "pointer", transition: "all 0.2s", flex: "1 0 52px",
               }}>
-                <span style={{ fontSize: 20 }}>{mood.emoji}</span>
-                <span style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "var(--font-main)", textAlign: "center" }}>{mood.label}</span>
+                <span style={{ fontSize: 26 }}>{mood.emoji}</span>
+                <span style={{ fontSize: 11, color: selectedMood?.label === mood.label ? "#f0f1fa" : "#94a3b8", fontFamily: "var(--font-main)", textAlign: "center", fontWeight: selectedMood?.label === mood.label ? 600 : 500 }}>{mood.label}</span>
               </button>
             ))}
           </div>
@@ -154,15 +154,15 @@ export default function Dashboard({ t, locale, user, onNavigate }) {
       </button>
 
       {/* Stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12, marginBottom: 20 }}>
         {statCards.map((s) => (
-          <div key={s.label} className="glass" style={{ padding: 16 }}>
+          <div key={s.label} className="glass" style={{ padding: "18px 16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <p style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 5, fontFamily: "var(--font-main)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</p>
-                <p style={{ fontFamily: "var(--font-main)", fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</p>
+                <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, fontFamily: "var(--font-main)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</p>
+                <p style={{ fontFamily: "var(--font-main)", fontSize: 26, fontWeight: 700, color: s.color }}>{s.value}</p>
               </div>
-              <span style={{ fontSize: 20 }}>{s.icon}</span>
+              <span style={{ fontSize: 22 }}>{s.icon}</span>
             </div>
           </div>
         ))}
