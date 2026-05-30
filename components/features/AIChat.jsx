@@ -275,13 +275,22 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
           if (typeof msg.content !== "string" || msg.content === "__OPENING__") return null;
           const isUser = msg.role === "user";
           return (
-            <div key={`${msg.timestamp ?? index}-${index}`} style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", alignItems: "flex-end", gap: 8, marginBottom: 16 }}>
+            <div key={`${msg.timestamp ?? index}-${index}`} style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", alignItems: "flex-end", gap: 10, marginBottom: 22 }}>
               {!isUser && <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>🌿</div>}
               <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4 }}>
-                <div style={{ padding: "13px 18px", fontSize: 14.5, lineHeight: 1.75, whiteSpace: "pre-wrap", wordBreak: "break-word", ...(isUser ? { background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "white", borderRadius: "18px 18px 4px 18px" } : { background: "var(--bg-card,rgba(255,255,255,0.05))", border: "1px solid var(--border,rgba(255,255,255,0.08))", color: "var(--text-primary,#f0f1fa)", borderRadius: "18px 18px 18px 4px" }) }}>
+                <div style={{ padding: "15px 20px", fontSize: 15.5, lineHeight: 1.9, whiteSpace: "pre-wrap", wordBreak: "break-word", ...(isUser ? {
+                    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                    color: "white",
+                    borderRadius: "20px 20px 5px 20px",
+                  } : {
+                    background: "rgba(255,255,255,0.07)",
+                    color: "#e2e8f0",
+                    borderRadius: "20px 20px 20px 5px",
+                    // Sin borde — elimina el efecto de rayas
+                  }) }}>
                   {msg.content}
                 </div>
-                {msg.timestamp && <span style={{ fontSize: 10, color: "var(--text-muted,#4a4d64)", padding: "0 2px" }}>{formatTime(msg.timestamp)}</span>}
+                {msg.timestamp && <span style={{ fontSize: 11, color: "var(--text-muted,#64748b)", padding: "0 4px" }}>{formatTime(msg.timestamp)}</span>}
               </div>
             </div>
           );
@@ -308,7 +317,7 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
           placeholder={isListening ? (locale === "es" ? "Escuchando..." : locale === "pt" ? "Ouvindo..." : "Listening...") : (placeholders[locale] ?? placeholders.es)}
           rows={1} disabled={isLoading || isListening}
-          style={{ flex: 1, resize: "none", maxHeight: 120, overflow: input.length > 100 ? "auto" : "hidden", background: "var(--bg-card,rgba(255,255,255,0.05))", border: "1px solid var(--border,rgba(255,255,255,0.1))", borderRadius: 10, color: "var(--text-primary,#f0f1fa)", fontFamily: "var(--font-body,'DM Sans',sans-serif)", fontSize: 15, padding: "12px 16px", outline: "none", transition: "border-color .2s", opacity: (isLoading || isListening) ? 0.6 : 1 }}
+          style={{ flex: 1, resize: "none", maxHeight: 120, overflow: input.length > 100 ? "auto" : "hidden", background: "rgba(255,255,255,0.07)", border: "none", borderRadius: 14, color: "#e2e8f0", fontFamily: "var(--font-body,'DM Sans',sans-serif)", fontSize: 15.5, padding: "13px 18px", outline: "none", transition: "all .2s", opacity: (isLoading || isListening) ? 0.6 : 1 }}
           onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
           onBlur={(e)  => (e.target.style.borderColor = "var(--border,rgba(255,255,255,0.1))")}
         />
@@ -321,7 +330,7 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         </button>
       </div>
 
-      <p style={{ fontSize: 10, color: "var(--text-muted,#4a4d64)", textAlign: "center", marginTop: 8 }}>
+      <p style={{ fontSize: 12, color: "var(--text-muted,#64748b)", textAlign: "center", marginTop: 10 }}>
         {locale === "es" ? "MindEase es un acompañante IA, no reemplaza la terapia profesional."
           : locale === "pt" ? "MindEase é um acompanhante de IA, não substitui a terapia profissional."
           : "MindEase is an AI companion, not a replacement for professional therapy."}
