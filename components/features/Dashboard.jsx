@@ -1,18 +1,53 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getGreeting } from "@/lib/utils";
+import { getStats, saveMood } from "@/lib/firestore";
+import { auth } from "@/lib/firebase";
+import Garden   from "@/components/ui/Garden";
+import LetterModal from "@/components/ui/LetterModal";
 
-export default function Dashboard({ t, locale, user, onNavigate, messages }) {
+export default function Dashboard({ t, locale, user, onNavigate }) {
   const [selectedMood, setSelectedMood] = useState(null);
-  const [moodSaved, setMoodSaved]       = useState(false);
+  const [moodSaved,    setMoodSaved]    = useState(false);
+  const [stats,        setStats]        = useState({ totalMessages: 0, daysActive: 0, streak: 0, lastMood: null });
+  const [showLetter,   setShowLetter]   = useState(false);
+  const [letterReady,  setLetterReady]  = useState(false);
 
   const greeting = getGreeting(locale);
 
-  const stats = [
-    { label: t.conversations,  value: Math.max(0, messages.filter((m) => m.role === "user").length), icon: "💬", color: "#6366f1" },
-    { label: t.daysActive,     value: 7,   icon: "🗓️", color: "#8b5cf6" },
-    { label: t.moodScore,      value: selectedMood ? `${selectedMood.value}/10` : "—", icon: "💙", color: "#06b6d4" },
-    { label: t.reliefSessions, value: 3,   icon: "🌿", color: "#10b981" },
+  // Cargar stats reales de Firestore
+  useEffect(() => {
+    const uid = auth.currentUser?.uid || user?.uid;
+    if (!uid) return;
+    getStats(uid).then((s) => {
+      setStats(s);
+      if (s.lastMood) {
+        setSelectedMood(s.lastMood);
+        setMoodSaved(true);
+      }
+    });
+  }, [user?.uid]);
+
+  // Guardar mood en Firestore
+  const handleSaveMood = async () => {
+    const uid = auth.currentUser?.uid || user?.uid;
+    if (uid && selectedMood) await saveMood(uid, selectedMood);
+    setMoodSaved(true);
+    setStats(prev => ({ ...prev, lastMood: selectedMood }));
+  };
+
+  const streak = stats.streak || 0;
+  const streakMsg = {
+    es: streak === 0 ? null : streak === 1 ? "¡Empezaste tu racha! 🔥" : streak < 7 ? `${streak} días seguidos cuidándote 🔥` : `${streak} días. Eso es dedicación real. 🔥`,
+    pt: streak === 0 ? null : streak === 1 ? "Você começou sua sequência! 🔥" : streak < 7 ? `${streak} dias seguidos se cuidando 🔥` : `${streak} dias. Isso é dedicação real. 🔥`,
+    en:  streak === 0 ? null : streak === 1 ? "You started your streak! 🔥" : streak < 7 ? `${streak} days in a row caring for yourself 🔥` : `${streak} days. That's real dedication. 🔥`,
+  }[locale] || null;
+
+  const statCards = [
+    { label: t.conversations,  value: stats.totalMessages || 0, icon: "💬", color: "#6366f1" },
+    { label: t.daysActive,     value: stats.daysActive    || 0, icon: "🗓️", color: "#8b5cf6" },
+    { label: t.moodScore,      value: stats.lastMood ? `${stats.lastMood.value}/10` : "—", icon: "💙", color: "#06b6d4" },
+    { label: t.reliefSessions, value: stats.daysActive > 0 ? Math.min(stats.daysActive, 99) : 0, icon: "🌿", color: "#10b981" },
   ];
 
   const quickTools = [
@@ -22,97 +57,137 @@ export default function Dashboard({ t, locale, user, onNavigate, messages }) {
     { icon: "📊", label: t.insightsLabel, desc: t.insightsDesc, page: "insights" },
   ];
 
+  const letterLabel = {
+    es: { cta: "💌 Mi carta de esta semana", sub: "Algo especial para vos" },
+    pt: { cta: "💌 Minha carta desta semana", sub: "Algo especial para você" },
+    en: { cta: "💌 My letter this week",    sub: "Something special for you" },
+  }[locale] || { cta: "💌 My letter", sub: "" };
+
   return (
     <div style={{ padding: "24px 0", animation: "fadeUp 0.4s ease" }}>
+
+      {showLetter && (
+        <LetterModal
+          locale={locale}
+          userName={user?.name?.split(" ")[0]}
+          isPremium={user?.isPremium}
+          onClose={() => setShowLetter(false)}
+        />
+      )}
+
       {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 4 }}>{greeting} 🌿</p>
+      <div style={{ marginBottom: 22 }}>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 3 }}>{greeting} 🌿</p>
         <h1 style={{ fontFamily: "var(--font-main)", fontSize: 26, fontWeight: 700 }}>
           {t.hello}, {user?.name?.split(" ")[0]}
         </h1>
-        <p style={{ color: "var(--text-secondary)", marginTop: 4 }}>{t.howFeeling}</p>
+        <p style={{ color: "var(--text-secondary)", marginTop: 4, fontSize: 14 }}>{t.howFeeling}</p>
       </div>
+
+      {/* Racha — si existe */}
+      {streakMsg && (
+        <div style={{ background: "linear-gradient(135deg,rgba(251,146,60,0.12),rgba(249,115,22,0.08))", border: "1px solid rgba(251,146,60,0.25)", borderRadius: 14, padding: "11px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 20 }}>🔥</span>
+          <span style={{ fontSize: 13, color: "#fb923c", fontWeight: 600 }}>{streakMsg}</span>
+        </div>
+      )}
 
       {/* Mood check-in */}
       {!moodSaved ? (
-        <div className="glass" style={{ padding: 22, marginBottom: 20 }}>
-          <h3 style={{ fontFamily: "var(--font-main)", fontSize: 15, fontWeight: 600, marginBottom: 14 }}>{t.dailyCheckin}</h3>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="glass" style={{ padding: 20, marginBottom: 18 }}>
+          <h3 style={{ fontFamily: "var(--font-main)", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{t.dailyCheckin}</h3>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
             {t.moods.map((mood) => (
-              <button
-                key={mood.label}
-                onClick={() => setSelectedMood(mood)}
-                style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
-                  padding: "10px 14px", borderRadius: 12, border: "1px solid",
-                  borderColor: selectedMood?.label === mood.label ? mood.color : "var(--border)",
-                  background: selectedMood?.label === mood.label ? `${mood.color}22` : "transparent",
-                  cursor: "pointer", transition: "all 0.2s", flex: "1 0 60px",
-                }}
-              >
-                <span style={{ fontSize: 22 }}>{mood.emoji}</span>
-                <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-main)", textAlign: "center" }}>{mood.label}</span>
+              <button key={mood.label} onClick={() => setSelectedMood(mood)} style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                padding: "9px 12px", borderRadius: 12, border: "1px solid",
+                borderColor: selectedMood?.label === mood.label ? mood.color : "var(--border)",
+                background: selectedMood?.label === mood.label ? `${mood.color}22` : "transparent",
+                cursor: "pointer", transition: "all 0.2s", flex: "1 0 52px",
+              }}>
+                <span style={{ fontSize: 20 }}>{mood.emoji}</span>
+                <span style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "var(--font-main)", textAlign: "center" }}>{mood.label}</span>
               </button>
             ))}
           </div>
           {selectedMood && (
-            <button
-              className="btn btn-primary"
-              style={{ marginTop: 14, width: "100%" }}
-              onClick={() => setMoodSaved(true)}
-            >
+            <button className="btn btn-primary" style={{ marginTop: 12, width: "100%", padding: "11px" }} onClick={handleSaveMood}>
               {t.saveMood}
             </button>
           )}
         </div>
       ) : (
-        <div className="glass" style={{ padding: 22, marginBottom: 20, textAlign: "center", borderColor: "rgba(16,185,129,0.3)" }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>{selectedMood.emoji}</div>
-          <h3 style={{ fontFamily: "var(--font-main)", fontWeight: 600, marginBottom: 4 }}>{t.moodSaved}</h3>
-          <p style={{ color: "var(--text-muted)", fontSize: 14 }}>
-            {t.moodSavedDesc} <strong>{selectedMood.label.toLowerCase()}</strong>{t.moodToday}
-          </p>
+        <div className="glass" style={{ padding: 18, marginBottom: 18, display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ fontSize: 32 }}>{selectedMood?.emoji || stats.lastMood?.emoji}</span>
+          <div>
+            <p style={{ fontFamily: "var(--font-main)", fontWeight: 600, fontSize: 14 }}>{t.moodSaved}</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2 }}>
+              {t.moodSavedDesc} <strong>{(selectedMood?.label || stats.lastMood?.label || "").toLowerCase()}</strong>{t.moodToday}
+            </p>
+          </div>
         </div>
       )}
 
+      {/* Jardín interior */}
+      <Garden daysActive={stats.daysActive} locale={locale} />
+
+      {/* Carta semanal — CTA */}
+      <button
+        onClick={() => setShowLetter(true)}
+        style={{
+          width: "100%", marginBottom: 18, padding: "16px 20px",
+          borderRadius: 16, border: "1px solid rgba(99,102,241,0.3)",
+          background: "linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.08))",
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
+          transition: "all .2s", textAlign: "left",
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = "linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.14))"}
+        onMouseLeave={e => e.currentTarget.style.background = "linear-gradient(135deg,rgba(99,102,241,0.1),rgba(139,92,246,0.08))"}
+      >
+        <div>
+          <p style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontWeight: 700, fontSize: 14, color: "var(--text-primary,#f0f1fa)", marginBottom: 3 }}>
+            {letterLabel.cta}
+          </p>
+          <p style={{ fontSize: 11, color: "var(--accent,#6366f1)" }}>{letterLabel.sub}</p>
+        </div>
+        <span style={{ fontSize: 20, color: "var(--accent,#6366f1)" }}>›</span>
+      </button>
+
       {/* Stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 20 }}>
-        {stats.map((s) => (
-          <div key={s.label} className="glass" style={{ padding: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 18 }}>
+        {statCards.map((s) => (
+          <div key={s.label} className="glass" style={{ padding: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <p style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5, fontFamily: "var(--font-main)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</p>
+                <p style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 5, fontFamily: "var(--font-main)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</p>
                 <p style={{ fontFamily: "var(--font-main)", fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</p>
               </div>
-              <span style={{ fontSize: 22 }}>{s.icon}</span>
+              <span style={{ fontSize: 20 }}>{s.icon}</span>
             </div>
           </div>
         ))}
       </div>
 
       {/* Quick tools */}
-      <div style={{ marginBottom: 20 }}>
-        <h3 style={{ fontFamily: "var(--font-main)", fontSize: 15, fontWeight: 600, marginBottom: 12 }}>{t.quickRelief}</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10 }}>
-          {quickTools.map((tool) => (
-            <button
-              key={tool.label}
-              className="glass tool-card"
-              onClick={() => onNavigate(tool.page)}
-              style={{ padding: 18, textAlign: "left", border: "1px solid var(--border)", background: "var(--bg-card)" }}
-            >
-              <div style={{ fontSize: 26, marginBottom: 8 }}>{tool.icon}</div>
-              <div style={{ fontFamily: "var(--font-main)", fontSize: 14, fontWeight: 600 }}>{tool.label}</div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{tool.desc}</div>
-            </button>
-          ))}
-        </div>
+      <h3 style={{ fontFamily: "var(--font-main)", fontSize: 14, fontWeight: 600, marginBottom: 10 }}>{t.quickRelief}</h3>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 20 }}>
+        {quickTools.map((tool) => (
+          <button key={tool.label} className="glass" onClick={() => onNavigate(tool.page)}
+            style={{ padding: 16, textAlign: "left", border: "1px solid var(--border)", background: "var(--bg-card)", cursor: "pointer", borderRadius: 14, transition: "all .2s" }}
+            onMouseEnter={e => e.currentTarget.style.background = "var(--bg-card-hover)"}
+            onMouseLeave={e => e.currentTarget.style.background = "var(--bg-card)"}>
+            <div style={{ fontSize: 24, marginBottom: 7 }}>{tool.icon}</div>
+            <div style={{ fontFamily: "var(--font-main)", fontSize: 13, fontWeight: 600 }}>{tool.label}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{tool.desc}</div>
+          </button>
+        ))}
       </div>
 
-      {/* Affirmation */}
+      {/* Afirmación */}
       <div className="highlight-box">
         <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7, fontStyle: "italic" }}>{t.affirmation}</p>
       </div>
+
     </div>
   );
 }
