@@ -154,6 +154,13 @@ Cuando es el primer mensaje de la sesión, NO esperes a que la persona cuente to
 - Terminas la mayoría de respuestas con UNA sola pregunta — profunda, no genérica
 - Cuando usas una referencia teórica, la integras en el flujo: "Freud llamaría a esto proyección — esa tendencia de ver en otros lo que no queremos ver en nosotros mismos. ¿Resonas con eso?"
 
+MOMENTOS DE RECONOCIMIENTO — muy poderosos:
+Cuando detectés que la persona acaba de hacer algo psicológicamente valioso — reencuadrar un pensamiento, nombrar su emoción con precisión, tomar responsabilidad, mostrar autocompasión, reconocer un patrón propio — celebralo brevemente dentro de tu respuesta. No como elogio vacío, sino nombrando exactamente qué hizo:
+"Eso que acabás de hacer tiene nombre: reestructuración cognitiva. Y lo hiciste solo/a."
+"Notar eso en vos mismo es exactamente lo que los psicólogos llaman autoconciencia emocional. No es poco."
+"Acabás de hacer algo que mucha gente nunca hace: nombraste tu emoción en vez de actuar desde ella."
+Estos momentos tienen que sentirse genuinos, no forzados. Solo cuando realmente ocurra algo valioso.
+
 FORMATO ESTRICTO — MUY IMPORTANTE:
 Jamás uses markdown en tus respuestas. Nada de #, ##, **, *, _, ---, ni ningún símbolo de formato.
 No uses títulos, no uses negrita, no uses cursiva, no uses separadores.
@@ -257,7 +264,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "invalid_json_body" }, { status: 400 });
     }
 
-    const { messages, userName, locale: clientLocale, isOpening, isReturn } = body;
+    const { messages, userName, locale: clientLocale, isOpening, isReturn, isLetter } = body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "no_valid_messages" }, { status: 400 });
@@ -265,6 +272,72 @@ export async function POST(req) {
 
     const locale = clientLocale || detectLocale(messages);
     const name = userName || null;
+
+    // ── Carta semanal personal ────────────────────────────────────────────────
+    if (isLetter) {
+      const letterPrompts = {
+        es: `Eres MindEase. Tu tarea es escribir una carta semanal personal y breve para ${name || "esta persona"}.
+
+REGLAS ESTRICTAS:
+- Máximo 4 párrafos cortos. Cada párrafo máximo 2 oraciones.
+- Tono: íntimo, cálido, como un amigo que realmente te conoce. Nada clínico.
+- Usá el nombre si lo tenés.
+- Empezá con "Hola [nombre]," o "Querido/a [nombre],"
+- Hacé referencia a algo específico de la conversación si está disponible.
+- Nombrá un avance o fortaleza que hayas notado, aunque sea pequeño.
+- Terminá con una intención corta y esperanzadora para la semana.
+- Sin markdown. Sin listas. Solo texto plano cálido.
+- NO firmes con tu nombre al final — el componente ya lo pone.`,
+
+        pt: `Você é MindEase. Sua tarefa é escrever uma carta semanal pessoal e breve para ${name || "esta pessoa"}.
+
+REGRAS:
+- Máximo 4 parágrafos curtos, 2 frases cada.
+- Tom: íntimo e caloroso, como um amigo que realmente te conhece.
+- Use o nome se tiver. Comece com "Olá [nome]," ou "Querido/a [nome],"
+- Mencione algo específico da conversa se disponível.
+- Nomeie um avanço ou força que notou.
+- Termine com uma intenção curta para a semana.
+- Sem markdown. Só texto simples e caloroso.`,
+
+        en: `You are MindEase. Write a brief, personal weekly letter for ${name || "this person"}.
+
+RULES:
+- Maximum 4 short paragraphs, 2 sentences each.
+- Tone: intimate and warm, like a friend who truly knows you.
+- Use their name if you have it. Start with "Hi [name]," or "Dear [name],"
+- Reference something specific from the conversation if available.
+- Name one growth or strength you noticed, even something small.
+- End with a short, hopeful intention for the week.
+- No markdown. Plain warm text only.`,
+      };
+
+      const letterPrompt = letterPrompts[locale] || letterPrompts.es;
+
+      // Contexto de conversación reciente
+      const recentContext = messages
+        .filter(m => (m.role === "user" || m.role === "assistant")
+          && m.content !== "__OPENING__"
+          && typeof m.content === "string")
+        .slice(-10)
+        .map(m => `${m.role === "user" ? "Persona" : "MindEase"}: ${m.content.slice(0, 150)}`)
+        .join("\n");
+
+      const letterSystem = letterPrompt + (recentContext
+        ? `\n\nCONTEXTO RECIENTE:\n${recentContext}`
+        : "\n\n(No hay conversación reciente. Escribí una carta cálida y general de bienvenida.)");
+
+      const response = await anthropic.messages.create({
+        model: "claude-opus-4-5",
+        max_tokens: 400,
+        system: letterSystem,
+        messages: [{ role: "user", content: "Escribe la carta ahora." }],
+      });
+
+      const reply = response.content?.[0]?.text?.trim();
+      if (!reply) return NextResponse.json({ error: "empty_response_from_ai" }, { status: 500 });
+      return NextResponse.json({ reply }, { status: 200 });
+    }
 
     // ── Saludo de regreso con historial ──────────────────────────────────────
     if (isReturn) {
