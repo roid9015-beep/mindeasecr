@@ -53,7 +53,7 @@ export default function Garden({ daysActive = 0, locale = "es" }) {
             {labels.title}
           </h3>
           {daysActive > 0 && (
-            <p style={{ fontSize: 11, color: "#10b981", fontWeight: 600 }}>
+            <p style={{ fontSize: 13, color: "var(--text-primary,#e2e8f0)", fontWeight: 600 }}>
               🔥 {labels.days(daysActive)}
             </p>
           )}
@@ -66,7 +66,7 @@ export default function Garden({ daysActive = 0, locale = "es" }) {
       </div>
 
       {/* Mensaje emocional */}
-      <p style={{ fontSize: 12, color: "var(--text-muted,#64748b)", textAlign: "center", lineHeight: 1.6, fontStyle: "italic" }}>
+      <p style={{ fontSize: 14, color: "#cbd5e1", textAlign: "center", lineHeight: 1.75, fontWeight: 400 }}>
         {msg}
       </p>
     </div>
