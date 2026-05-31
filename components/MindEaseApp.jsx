@@ -71,7 +71,6 @@ export default function MindEaseApp() {
           setPage("dashboard");
         }
       } else {
-        // No hay sesión activa — mostrar landing
         if (screen === "app") {
           clearUser();
           setScreen("landing");
@@ -192,6 +191,7 @@ export default function MindEaseApp() {
 
       {showPremium && (
         <PremiumModal t={t} locale={locale}
+          user={user}
           onClose={() => setShowPremium(false)}
           onUpgrade={handleUpgrade}
         />
@@ -221,7 +221,7 @@ export default function MindEaseApp() {
                 {!user?.isPremium && (
                   <button className="btn btn-primary" style={{ padding:"5px 12px", fontSize:11 }}
                     onClick={() => setShowPremium(true)}>
-                    ⭐ $5/mo
+                    ⭐ $2.99/mes
                   </button>
                 )}
               </div>
