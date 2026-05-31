@@ -20,8 +20,7 @@ import LandingPage       from "@/components/features/LandingPage";
 import AuthPage          from "@/components/features/AuthPage";
 import Dashboard         from "@/components/features/Dashboard";
 import AIChat            from "@/components/features/AIChat";
-import BreathingExercise from "@/components/features/BreathingExercise";
-import GroundingExercise from "@/components/features/GroundingExercise";
+import Relief            from "@/components/features/Relief";
 import Insights          from "@/components/features/Insights";
 import Settings          from "@/components/features/Settings";
 import TermsModal        from "@/components/ui/TermsModal";
@@ -162,10 +161,10 @@ export default function MindEaseApp() {
             onUpgrade={() => setShowPremium(true)}
           />
         );
-      case "breathing":
-        return <BreathingExercise {...common} />;
-      case "grounding":
-        return <GroundingExercise {...common} />;
+      case "relief":
+      case "breathing": // backward-compat redirect
+      case "grounding": // backward-compat redirect
+        return <Relief {...common} />;
       case "insights":
         return <Insights t={t} />;
       case "settings":
