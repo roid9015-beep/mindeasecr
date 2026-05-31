@@ -97,7 +97,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
   };
 
   return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:24, position:"relative" }}>
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px 16px", position:"relative", boxSizing:"border-box" }}>
       <BackgroundOrbs />
 
       {showTerms && (
@@ -118,7 +118,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
           <p style={{ color:"var(--text-muted)", fontSize:14 }}>{t.tagline}</p>
         </div>
 
-        <div className="glass" style={{ padding:32 }}>
+        <div className="glass" style={{ padding:"28px clamp(16px, 5vw, 32px)" }}>
           {/* Tabs */}
           <div style={{ display:"flex", gap:4, marginBottom:24, background:"var(--bg-secondary)", borderRadius:10, padding:4 }}>
             {[["login", t.signInBtn], ["signup", t.createAccount]].map(([m, label]) => (
@@ -207,6 +207,9 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
         .btn-ghost{background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border)}
         .btn-ghost:hover{background:var(--bg-card-hover);color:var(--text-primary)}
         .btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
+        .custom-input{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:14px;font-family:var(--font-main);outline:none;box-sizing:border-box;transition:border-color .2s}
+        .custom-input:focus{border-color:var(--accent)}
+        @media(max-width:400px){.glass{border-radius:16px!important}}
       `}</style>
     </div>
   );
