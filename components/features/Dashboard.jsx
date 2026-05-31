@@ -177,7 +177,7 @@ export default function Dashboard({ t, locale, user, onNavigate }) {
 
       {/* Jardín interior */}
       <Garden daysActive={stats.daysActive} locale={locale} />
-      <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: -8, marginBottom: 18, lineHeight: 1.6, fontStyle: "italic" }}>
+      <p style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", marginTop: -8, marginBottom: 18, lineHeight: 1.6, fontStyle: "italic" }}>
         🌱 Tu planta refleja tu constancia. Cada día que usás MindEase — hablás, respirás o registrás tu estado — ella crece. Cuidarla es cuidarte.
       </p>
 
