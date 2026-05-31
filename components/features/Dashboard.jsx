@@ -51,8 +51,8 @@ export default function Dashboard({ t, locale, user, onNavigate }) {
   ];
 
   const quickTools = [
-    { icon: "🫁", label: t.breatheLabel,  desc: t.breatheDesc,  page: "breathing" },
-    { icon: "🎯", label: t.groundLabel,   desc: t.groundDesc,   page: "grounding" },
+    { icon: "🫁", label: t.breatheLabel,  desc: t.breatheDesc,  page: "relief" },
+    { icon: "🎯", label: t.groundLabel,   desc: t.groundDesc,   page: "relief" },
     { icon: "💬", label: t.talkLabel,     desc: t.talkDesc,     page: "chat" },
     { icon: "📊", label: t.insightsLabel, desc: t.insightsDesc, page: "insights" },
   ];
@@ -82,6 +82,53 @@ export default function Dashboard({ t, locale, user, onNavigate }) {
           {t.hello}, {user?.name?.split(" ")[0]}
         </h1>
         <p style={{ color: "var(--text-secondary)", marginTop: 4, fontSize: 14 }}>{t.howFeeling}</p>
+      </div>
+
+      {/* SOS — Alivio inmediato */}
+      <button
+        onClick={() => onNavigate("relief")}
+        style={{
+          width: "100%", marginBottom: 18,
+          padding: "18px 24px",
+          borderRadius: 18,
+          border: "none",
+          background: "linear-gradient(135deg, #ef4444, #dc2626)",
+          cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
+          boxShadow: "0 6px 28px rgba(239,68,68,0.4)",
+          transition: "all .2s",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 36px rgba(239,68,68,0.55)"; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 6px 28px rgba(239,68,68,0.4)"; }}
+      >
+        <span style={{ fontSize: 28 }}>🆘</span>
+        <div style={{ textAlign: "left" }}>
+          <p style={{ fontFamily: "var(--font-main)", fontWeight: 800, fontSize: 18, color: "white", letterSpacing: "-0.3px" }}>
+            Necesito alivio ahora
+          </p>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 2 }}>
+            Respiración guiada · Ejercicio de anclaje
+          </p>
+        </div>
+        <span style={{ fontSize: 22, color: "rgba(255,255,255,0.7)", marginLeft: "auto" }}>›</span>
+      </button>
+
+      {/* Qué es MindEase */}
+      <div style={{
+        background: "linear-gradient(135deg,rgba(99,102,241,0.08),rgba(16,185,129,0.06))",
+        border: "1px solid rgba(99,102,241,0.2)",
+        borderRadius: 16, padding: "16px 20px", marginBottom: 18,
+        display: "flex", alignItems: "flex-start", gap: 14,
+      }}>
+        <span style={{ fontSize: 32, flexShrink: 0 }}>🌿</span>
+        <div>
+          <p style={{ fontFamily: "var(--font-main)", fontWeight: 700, fontSize: 14, color: "var(--text-primary)", marginBottom: 5 }}>
+            Tu espacio para respirar
+          </p>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.65 }}>
+            MindEase es un compañero de bienestar mental. Podés hablar de lo que sentís, hacer ejercicios para calmarte en momentos difíciles, y ver cómo evolucionás con el tiempo. Sin juicios, sin diagnósticos — solo apoyo cuando lo necesitás.
+          </p>
+        </div>
       </div>
 
       {/* Racha — si existe */}
