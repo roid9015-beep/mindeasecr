@@ -7,6 +7,50 @@ import { useVoice } from "@/hooks/useVoice";
 import { loadConversation, saveMessage } from "@/lib/firestore";
 import PinLock from "@/components/ui/PinLock";
 
+// ── Sistema de créditos ────────────────────────────────────────────────────────
+const FIRST_SESSION_KEY  = "mindease_first_session_done";
+const FIRST_SESSION_USED = "mindease_first_session_credits"; // cuántos usó
+const FIRST_SESSION_MAX  = 5;  // intercambios con Opus en primera sesión
+const FREE_DAILY_MAX     = 3;  // intercambios/día con Haiku después
+
+function getTodayKey() {
+  return `mindease_daily_${new Date().toISOString().slice(0, 10)}`;
+}
+function isFirstSession() {
+  if (typeof window === "undefined") return true;
+  return !localStorage.getItem(FIRST_SESSION_KEY);
+}
+function getFirstSessionCreditsUsed() {
+  if (typeof window === "undefined") return 0;
+  return parseInt(localStorage.getItem(FIRST_SESSION_USED) || "0", 10);
+}
+function incrementFirstSessionCredits() {
+  if (typeof window === "undefined") return;
+  const next = getFirstSessionCreditsUsed() + 1;
+  localStorage.setItem(FIRST_SESSION_USED, String(next));
+  if (next >= FIRST_SESSION_MAX) {
+    localStorage.setItem(FIRST_SESSION_KEY, "done");
+  }
+}
+function getDailyCreditsUsed() {
+  if (typeof window === "undefined") return 0;
+  return parseInt(localStorage.getItem(getTodayKey()) || "0", 10);
+}
+function incrementDailyCredits() {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(getTodayKey(), String(getDailyCreditsUsed() + 1));
+}
+function getVoiceUsedToday() {
+  if (typeof window === "undefined") return 0;
+  return parseInt(localStorage.getItem(`mindease_voice_${new Date().toISOString().slice(0, 10)}`) || "0", 10);
+}
+function incrementVoiceUsed() {
+  if (typeof window === "undefined") return;
+  const key = `mindease_voice_${new Date().toISOString().slice(0, 10)}`;
+  localStorage.setItem(key, String(getVoiceUsedToday() + 1));
+}
+
+// ── Helpers UI ─────────────────────────────────────────────────────────────────
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
@@ -27,14 +71,16 @@ function TypingIndicator() {
   );
 }
 
-export default function AIChat({ user, locale = "es", voiceEnabled = false, voiceKey = "es-MX" }) {
+// ── Componente principal ───────────────────────────────────────────────────────
+export default function AIChat({ user, locale = "es", voiceEnabled = false, voiceKey = "es-MX", onUpgrade }) {
   const [messages,    setMessages]    = useState([]);
   const [input,       setInput]       = useState("");
   const [isLoading,   setIsLoading]   = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [error,       setError]       = useState("");
+  const [showUpgrade, setShowUpgrade] = useState(false); // upgrade emocional
+  const [upgradeMode, setUpgradeMode] = useState("soft"); // "soft" | "hard"
 
-  // ── PIN — declarado con los demás hooks, sin early return ───────────────
   const [pinUnlocked, setPinUnlocked] = useState(
     typeof window === "undefined" ? true : !localStorage.getItem("mindease_pin")
   );
@@ -44,28 +90,40 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
   const inputRef       = useRef(null);
   const recognitionRef = useRef(null);
 
-  // Refs para que el efecto de apertura siempre tenga valores frescos
   const voiceEnabledRef = useRef(voiceEnabled);
   const localeRef       = useRef(locale);
   const userNameRef     = useRef("");
 
-  // Actualizar refs en cada render
   voiceEnabledRef.current = voiceEnabled;
   localeRef.current       = locale;
   userNameRef.current     = user?.name || user?.displayName || user?.email?.split("@")[0]
     || auth.currentUser?.displayName
     || auth.currentUser?.email?.split("@")[0] || "";
 
-  const { speak, stop, speaking } = useVoice(voiceKey, voiceEnabled);
+  const isPremium       = user?.isPremium || false;
+  const firstSession    = isFirstSession();
+  const fsCreditsUsed   = getFirstSessionCreditsUsed();
+  const dailyUsed       = getDailyCreditsUsed();
+
+  // Créditos restantes según estado
+  const creditsLeft = isPremium
+    ? Infinity
+    : firstSession
+      ? Math.max(0, FIRST_SESSION_MAX - fsCreditsUsed)
+      : Math.max(0, FREE_DAILY_MAX - dailyUsed);
+
+  // ¿Puede hablar por voz? Primera sesión o premium
+  const canUseVoice = isPremium || firstSession;
+
+  const { speak, stop, speaking } = useVoice(voiceKey, canUseVoice && voiceEnabled);
   const speakRef = useRef(speak);
   speakRef.current = speak;
 
-  // Scroll automático
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // ── Llamada al API (siempre usa refs para valores frescos) ───────────────
+  // ── Llamada al API pasando contexto de plan ───────────────────────────────
   const doFetch = async (body) => {
     const token = await auth.currentUser?.getIdToken(true).catch(() => null);
     const response = await fetch("/api/chat", {
@@ -76,8 +134,10 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       },
       body: JSON.stringify({
         ...body,
-        userName: userNameRef.current || undefined,
-        locale: localeRef.current,
+        userName:       userNameRef.current || undefined,
+        locale:         localeRef.current,
+        isPremium:      isPremium,
+        isFirstSession: firstSession && fsCreditsUsed < FIRST_SESSION_MAX,
       }),
     });
     let data;
@@ -88,14 +148,18 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
   const addAIMessage = (text, uid) => {
     const aiMsg = { role: "assistant", content: text, timestamp: Date.now() };
     setMessages((prev) => Array.isArray(prev) ? [...prev, aiMsg] : [aiMsg]);
-    // Leer refs en el momento de ejecución para tener valores frescos
     try {
-      if (voiceEnabledRef.current && speakRef.current) speakRef.current(text);
+      if (canUseVoice && voiceEnabledRef.current && speakRef.current) {
+        if (isPremium || getVoiceUsedToday() < 3) {
+          speakRef.current(text);
+          if (!isPremium) incrementVoiceUsed();
+        }
+      }
     } catch { /* voz no crítica */ }
     if (uid) saveMessage(uid, aiMsg);
   };
 
-  // ── callAPI ───────────────────────────────────────────────────────────────
+  // ── callAPI ──────────────────────────────────────────────────────────────
   const callAPI = useCallback(async (messagesPayload, isOpening = false) => {
     setIsLoading(true);
     setError("");
@@ -114,11 +178,9 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     }
   }, []); // eslint-disable-line
 
-  // ── callAPIReturn ─────────────────────────────────────────────────────────
   const callAPIReturn = useCallback(async (recentHistory, uid) => {
     setIsLoading(true);
     try {
-      // Filtrar solo mensajes válidos con roles alternados para Anthropic
       const validHistory = recentHistory
         .filter((m) => (m.role === "user" || m.role === "assistant")
           && typeof m.content === "string"
@@ -132,29 +194,19 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         isReturn: true,
       });
 
-      if (data?.reply?.trim()) {
-        addAIMessage(data.reply.trim(), uid);
-      }
-      // Si falla silenciosamente — el historial ya está visible, no hace falta fallback
-    } catch {
-      // Silencioso — no disparar apertura encima del historial cargado
-    } finally {
-      setIsLoading(false);
-    }
+      if (data?.reply?.trim()) addAIMessage(data.reply.trim(), uid);
+    } catch { /* silencioso */ }
+    finally { setIsLoading(false); }
   }, []); // eslint-disable-line
 
-  // ── Efecto de apertura — espera respuesta definitiva de Firebase Auth ────
-  // onAuthStateChanged garantiza que sabemos si hay sesión o no antes de decidir
+  // ── Efecto de apertura ───────────────────────────────────────────────────
   useEffect(() => {
     if (hasOpened.current) return;
-
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      unsubscribe(); // solo necesitamos la primera respuesta
+      unsubscribe();
       if (hasOpened.current) return;
       hasOpened.current = true;
-
       const uid = firebaseUser?.uid;
-
       if (uid) {
         try {
           const history = await loadConversation(uid);
@@ -171,14 +223,29 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         callAPI([{ role: "user", content: "__OPENING__" }], true);
       }
     });
-
     return () => unsubscribe();
   }, []); // eslint-disable-line
 
-  // ── Enviar mensaje ────────────────────────────────────────────────────────
+  // ── Enviar mensaje con control de créditos ───────────────────────────────
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading) return;
+
+    // Verificar créditos
+    if (!isPremium) {
+      if (creditsLeft <= 0) {
+        setUpgradeMode("hard");
+        setShowUpgrade(true);
+        return;
+      }
+      // Mostrar upgrade suave en el último crédito (después de enviarlo)
+      if (creditsLeft === 1) {
+        setTimeout(() => { setUpgradeMode("soft"); setShowUpgrade(true); }, 3000);
+      }
+      // Descontar crédito
+      if (firstSession) incrementFirstSessionCredits();
+      else incrementDailyCredits();
+    }
 
     const userMsg = { role: "user", content: text, timestamp: Date.now() };
     const updatedMessages = [...messages, userMsg];
@@ -192,9 +259,9 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       .map((m) => ({ role: m.role, content: m.content }));
 
     await callAPI(payload, false);
-  }, [input, isLoading, messages, callAPI, user?.uid]);
+  }, [input, isLoading, messages, callAPI, user?.uid, isPremium, creditsLeft, firstSession]); // eslint-disable-line
 
-  // ── Voz entrada ───────────────────────────────────────────────────────────
+  // ── Voz entrada ──────────────────────────────────────────────────────────
   const startListening = useCallback(() => {
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -241,10 +308,33 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
     en: "Write whatever you want to share...",
   };
 
-  // Mostrar PIN si está activo y no desbloqueado
   if (!pinUnlocked) {
     return <PinLock locale={locale} onUnlock={() => setPinUnlocked(true)} />;
   }
+
+  // ── Textos según estado ──────────────────────────────────────────────────
+  const creditLabel = isPremium ? null
+    : firstSession
+      ? `✨ Probando Premium — ${creditsLeft} de ${FIRST_SESSION_MAX} conversaciones restantes hoy`
+      : `${creditsLeft} de ${FREE_DAILY_MAX} mensajes gratuitos hoy`;
+
+  const upgradeTexts = {
+    soft: {
+      title: "Hoy fue una buena sesión ✨",
+      body: "Notamos que conectaste bien hoy. Con Premium podés seguir así todos los días — sin límites, con voz y análisis de tu evolución.",
+      cta: "Seguir con Premium — $2.99/mes",
+      skip: "Continuar gratis mañana",
+    },
+    hard: {
+      title: "Usaste tus mensajes de hoy",
+      body: firstSession
+        ? "Tu primera sesión fue especial. Para seguir mañana tenés 3 mensajes gratis, o podés pasarte a Premium y no perder este hilo."
+        : "Alcanzaste el límite de hoy. Volvés mañana con 3 mensajes nuevos, o con Premium es ilimitado.",
+      cta: "Hacerme Premium — $2.99/mes",
+      skip: "Volver mañana",
+    },
+  };
+  const ut = upgradeTexts[upgradeMode];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 140px)", animation: "fadeUp 0.4s ease" }}>
@@ -259,7 +349,7 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
             {locale === "es" ? "Aquí para ti" : locale === "pt" ? "Aqui para você" : "Here for you"}
           </div>
         </div>
-        {voiceEnabled && (
+        {canUseVoice && voiceEnabled && (
           <button onClick={speaking ? stop : undefined}
             style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: speaking ? "rgba(99,102,241,0.25)" : "rgba(99,102,241,0.1)", color: speaking ? "#818cf8" : "var(--text-muted,#64748b)", cursor: speaking ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, transition: "all .2s", animation: speaking ? "pulse-voice 1.5s ease-in-out infinite" : "none" }}>
             {speaking ? "🔊" : "🔈"}
@@ -279,14 +369,9 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
               {!isUser && <div style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>🌿</div>}
               <div style={{ maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4 }}>
                 <div style={{ padding: "15px 20px", fontSize: 15.5, lineHeight: 1.9, whiteSpace: "pre-wrap", wordBreak: "break-word", ...(isUser ? {
-                    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-                    color: "white",
-                    borderRadius: "20px 20px 5px 20px",
+                    background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "white", borderRadius: "20px 20px 5px 20px",
                   } : {
-                    background: "rgba(255,255,255,0.07)",
-                    color: "#e2e8f0",
-                    borderRadius: "20px 20px 20px 5px",
-                    // Sin borde — elimina el efecto de rayas
+                    background: "rgba(255,255,255,0.07)", color: "#e2e8f0", borderRadius: "20px 20px 20px 5px",
                   }) }}>
                   {msg.content}
                 </div>
@@ -299,6 +384,37 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         <div ref={endRef} />
       </div>
 
+      {/* Contador de créditos */}
+      {creditLabel && !showUpgrade && (
+        <div style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted)", marginTop: 4, marginBottom: 4 }}>
+          {creditLabel}
+          {" · "}
+          <button onClick={onUpgrade} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 11, padding: 0, textDecoration: "underline" }}>
+            Hacerme Premium
+          </button>
+        </div>
+      )}
+
+      {/* Upgrade modal suave */}
+      {showUpgrade && (
+        <div style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.12),rgba(139,92,246,0.08))", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 16, padding: "18px 20px", marginTop: 8, textAlign: "center" }}>
+          <p style={{ fontFamily: "var(--font-main)", fontWeight: 700, fontSize: 15, color: "var(--text-primary)", marginBottom: 6 }}>
+            {ut.title}
+          </p>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 14, lineHeight: 1.6 }}>
+            {ut.body}
+          </p>
+          <button className="btn btn-primary" style={{ padding: "10px 22px", fontSize: 13, marginBottom: 10, width: "100%" }}
+            onClick={() => { setShowUpgrade(false); onUpgrade?.(); }}>
+            {ut.cta}
+          </button>
+          <button onClick={() => setShowUpgrade(false)}
+            style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}>
+            {ut.skip}
+          </button>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 10, padding: "9px 14px", fontSize: 13, color: "#f87171", marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -308,27 +424,29 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
       )}
 
       {/* Input */}
-      <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border,rgba(255,255,255,0.08))", alignItems: "flex-end" }}>
-        <button onClick={isListening ? stopListening : startListening} disabled={isLoading}
-          style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: isListening ? "rgba(239,68,68,0.15)" : "var(--bg-card,rgba(255,255,255,0.05))", border: isListening ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border,rgba(255,255,255,0.1))", color: isListening ? "#f87171" : "var(--text-muted,#64748b)", cursor: isLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, transition: "all .2s", animation: isListening ? "pulse-mic 1s ease-in-out infinite" : "none", opacity: isLoading ? 0.5 : 1 }}>
-          {isListening ? "⏹" : "🎙️"}
-        </button>
+      {!showUpgrade && (
+        <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border,rgba(255,255,255,0.08))", alignItems: "flex-end" }}>
+          {canUseVoice && (
+            <button onClick={isListening ? stopListening : startListening} disabled={isLoading}
+              style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: isListening ? "rgba(239,68,68,0.15)" : "var(--bg-card,rgba(255,255,255,0.05))", border: isListening ? "1px solid rgba(239,68,68,0.4)" : "1px solid var(--border,rgba(255,255,255,0.1))", color: isListening ? "#f87171" : "var(--text-muted,#64748b)", cursor: isLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, transition: "all .2s", animation: isListening ? "pulse-mic 1s ease-in-out infinite" : "none", opacity: isLoading ? 0.5 : 1 }}>
+              {isListening ? "⏹" : "🎙️"}
+            </button>
+          )}
 
-        <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-          placeholder={isListening ? (locale === "es" ? "Escuchando..." : locale === "pt" ? "Ouvindo..." : "Listening...") : (placeholders[locale] ?? placeholders.es)}
-          rows={1} disabled={isLoading || isListening}
-          style={{ flex: 1, resize: "none", maxHeight: 120, overflow: input.length > 100 ? "auto" : "hidden", background: "rgba(255,255,255,0.07)", border: "none", borderRadius: 14, color: "#e2e8f0", fontFamily: "var(--font-body,'DM Sans',sans-serif)", fontSize: 15.5, padding: "13px 18px", outline: "none", transition: "all .2s", opacity: (isLoading || isListening) ? 0.6 : 1 }}
-          onFocus={(e) => (e.target.style.borderColor = "#6366f1")}
-          onBlur={(e)  => (e.target.style.borderColor = "var(--border,rgba(255,255,255,0.1))")}
-        />
+          <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+            placeholder={isListening ? (locale === "es" ? "Escuchando..." : locale === "pt" ? "Ouvindo..." : "Listening...") : (placeholders[locale] ?? placeholders.es)}
+            rows={1} disabled={isLoading || isListening}
+            style={{ flex: 1, resize: "none", maxHeight: 120, overflow: input.length > 100 ? "auto" : "hidden", background: "rgba(255,255,255,0.07)", border: "none", borderRadius: 14, color: "#e2e8f0", fontFamily: "var(--font-body,'DM Sans',sans-serif)", fontSize: 15.5, padding: "13px 18px", outline: "none", transition: "all .2s", opacity: (isLoading || isListening) ? 0.6 : 1 }}
+          />
 
-        <button onClick={sendMessage} disabled={isLoading || !input.trim() || isListening}
-          style={{ width: 44, height: 44, borderRadius: 10, border: "none", flexShrink: 0, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "white", cursor: "pointer", transition: "all .2s", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", opacity: (isLoading || !input.trim() || isListening) ? 0.5 : 1 }}
-          onMouseEnter={(e) => { if (!isLoading && input.trim()) e.currentTarget.style.transform = "translateY(-2px)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}>
-          {isLoading ? <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", animation: "spin .7s linear infinite" }} /> : "→"}
-        </button>
-      </div>
+          <button onClick={sendMessage} disabled={isLoading || !input.trim() || isListening}
+            style={{ width: 44, height: 44, borderRadius: 10, border: "none", flexShrink: 0, background: "linear-gradient(135deg,#6366f1,#8b5cf6)", color: "white", cursor: "pointer", transition: "all .2s", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center", opacity: (isLoading || !input.trim() || isListening) ? 0.5 : 1 }}
+            onMouseEnter={(e) => { if (!isLoading && input.trim()) e.currentTarget.style.transform = "translateY(-2px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; }}>
+            {isLoading ? <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", animation: "spin .7s linear infinite" }} /> : "→"}
+          </button>
+        </div>
+      )}
 
       <p style={{ fontSize: 12, color: "var(--text-muted,#64748b)", textAlign: "center", marginTop: 10 }}>
         {locale === "es" ? "MindEase es un acompañante IA, no reemplaza la terapia profesional."
