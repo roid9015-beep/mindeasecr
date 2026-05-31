@@ -254,6 +254,20 @@ No titles, no markdown, no bullet points.`,
   return prompt;
 }
 
+// ── Selección de modelo según plan ───────────────────────────────────────────
+// Opus: $15/$75 por MTok — solo premium y primera sesión (vale la inversión)
+// Haiku: $0.80/$4 por MTok — usuarios gratuitos día 2+ (100x más barato)
+function selectModel(isPremium, isFirstSession) {
+  if (isPremium || isFirstSession) return "claude-opus-4-5";
+  return "claude-haiku-4-5-20251001";
+}
+function selectMaxTokens(isPremium, isFirstSession, type) {
+  if (type === "letter" || type === "return") return isPremium ? 400 : 250;
+  if (isPremium) return 1200;
+  if (isFirstSession) return 800;
+  return 500; // free día 2+ — respuestas más cortas, costo mínimo
+}
+
 // ── POST /api/chat ────────────────────────────────────────────────────────────
 export async function POST(req) {
   try {
@@ -264,7 +278,7 @@ export async function POST(req) {
       return NextResponse.json({ error: "invalid_json_body" }, { status: 400 });
     }
 
-    const { messages, userName, locale: clientLocale, isOpening, isReturn, isLetter } = body;
+    const { messages, userName, locale: clientLocale, isOpening, isReturn, isLetter, isPremium, isFirstSession } = body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "no_valid_messages" }, { status: 400 });
@@ -328,8 +342,8 @@ RULES:
         : "\n\n(No hay conversación reciente. Escribí una carta cálida y general de bienvenida.)");
 
       const response = await anthropic.messages.create({
-        model: "claude-opus-4-5",
-        max_tokens: 400,
+        model: selectModel(isPremium, isFirstSession),
+        max_tokens: selectMaxTokens(isPremium, isFirstSession, "letter"),
         system: letterSystem,
         messages: [{ role: "user", content: "Escribe la carta ahora." }],
       });
@@ -372,10 +386,9 @@ Sin markdown, sin títulos. Solo texto cálido y directo. Usá el nombre siempre
         : "");
 
       const response = await anthropic.messages.create({
-        model: "claude-opus-4-5",
-        max_tokens: 400,
+        model: selectModel(isPremium, isFirstSession),
+        max_tokens: selectMaxTokens(isPremium, isFirstSession, "return"),
         system: fullReturnPrompt,
-        // Un solo mensaje trigger — el AI NO está respondiendo a una conversación, está abriendo
         messages: [{ role: "user", content: "El usuario acaba de volver a la app." }],
       });
       const reply = response.content?.[0]?.text?.trim();
@@ -386,9 +399,10 @@ Sin markdown, sin títulos. Solo texto cálido y directo. Usá el nombre siempre
     // ── Apertura automática: el frontend envía __OPENING__ ────────────────────
     if (isOpening || (messages.length === 1 && messages[0]?.content === "__OPENING__")) {
       const systemPrompt = buildSystemPrompt(locale, name, true);
+      // Apertura siempre con Opus — es la primera impresión, vale la inversión
       const response = await anthropic.messages.create({
         model: "claude-opus-4-5",
-        max_tokens: 1200,
+        max_tokens: 800,
         system: systemPrompt,
         messages: [{ role: "user", content: "Inicia la sesión terapéutica ahora." }],
       });
@@ -426,8 +440,8 @@ Sin markdown, sin títulos. Solo texto cálido y directo. Usá el nombre siempre
       : anthropicMessages;
 
     const response = await anthropic.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 1200,
+      model: selectModel(isPremium, isFirstSession),
+      max_tokens: selectMaxTokens(isPremium, isFirstSession, "chat"),
       system: systemPrompt,
       messages: trimmedMessages,
     });
