@@ -1,303 +1,312 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { useVoice } from "@/hooks/useVoice";
 
-// ── Textos por idioma ─────────────────────────────────────────────────────────
-const TX = {
-  es: {
-    title: "Alivio inmediato",
-    sub: "Estás en el lugar correcto. Elige lo que necesitás ahora.",
-    breatheTitle: "Respiración",
-    breatheSub: "Calma tu sistema nervioso en 2 minutos",
-    groundTitle: "Anclaje 5-4-3-2-1",
-    groundSub: "Volvé al presente ahora mismo",
-    chatTitle: "Hablar con MindEase",
-    chatSub: "Contame qué está pasando",
-    // Respiración
-    inhale: "Inhala", hold: "Aguanta", exhale: "Exhala", ready: "Listo",
-    start: "Comenzar", stop: "Detener",
-    cycle: "ciclo", cycles: "ciclos",
-    // Grounding
-    groundPrompt: "Tomá tu tiempo. Mirá a tu alrededor y encontrá",
-    next: "Siguiente →", back: "← Atrás", done: "Listo ✓",
-    doneTitle: "Muy bien.", doneDesc: "Estás presente. Estás a salvo.",
-    again: "Repetir",
-    senses: [
-      { num: "5", sense: "cosas que podés VER",      icon: "👁️" },
-      { num: "4", sense: "cosas que podés TOCAR",    icon: "✋" },
-      { num: "3", sense: "cosas que podés ESCUCHAR", icon: "👂" },
-      { num: "2", sense: "cosas que podés OLER",     icon: "👃" },
-      { num: "1", sense: "cosa que podés SABOREAR",  icon: "👅" },
-    ],
-  },
-  pt: {
-    title: "Alívio imediato",
-    sub: "Você está no lugar certo. Escolha o que precisa agora.",
-    breatheTitle: "Respiração",
-    breatheSub: "Acalme seu sistema nervoso em 2 minutos",
-    groundTitle: "Ancoragem 5-4-3-2-1",
-    groundSub: "Volte ao presente agora mesmo",
-    chatTitle: "Falar com MindEase",
-    chatSub: "Me conta o que está acontecendo",
-    inhale: "Inspire", hold: "Segure", exhale: "Expire", ready: "Pronto",
-    start: "Iniciar", stop: "Parar",
-    cycle: "ciclo", cycles: "ciclos",
-    groundPrompt: "Tome seu tempo. Olhe ao redor e encontre",
-    next: "Próximo →", back: "← Voltar", done: "Concluir ✓",
-    doneTitle: "Muito bem.", doneDesc: "Você está presente. Você está seguro/a.",
-    again: "Repetir",
-    senses: [
-      { num: "5", sense: "coisas que você pode VER",     icon: "👁️" },
-      { num: "4", sense: "coisas que você pode TOCAR",   icon: "✋" },
-      { num: "3", sense: "coisas que você pode OUVIR",   icon: "👂" },
-      { num: "2", sense: "coisas que você pode CHEIRAR", icon: "👃" },
-      { num: "1", sense: "coisa que você pode SABOREAR", icon: "👅" },
-    ],
-  },
-  en: {
-    title: "Immediate relief",
-    sub: "You're in the right place. Choose what you need right now.",
-    breatheTitle: "Breathing",
-    breatheSub: "Calm your nervous system in 2 minutes",
-    groundTitle: "5-4-3-2-1 Grounding",
-    groundSub: "Come back to the present right now",
-    chatTitle: "Talk to MindEase",
-    chatSub: "Tell me what's going on",
-    inhale: "Inhale", hold: "Hold", exhale: "Exhale", ready: "Ready",
-    start: "Start", stop: "Stop",
-    cycle: "cycle", cycles: "cycles",
-    groundPrompt: "Take your time. Look around and find",
-    next: "Next →", back: "← Back", done: "Done ✓",
-    doneTitle: "Well done.", doneDesc: "You're present. You're safe.",
-    again: "Again",
-    senses: [
-      { num: "5", sense: "things you can SEE",   icon: "👁️" },
-      { num: "4", sense: "things you can TOUCH",  icon: "✋" },
-      { num: "3", sense: "things you can HEAR",   icon: "👂" },
-      { num: "2", sense: "things you can SMELL",  icon: "👃" },
-      { num: "1", sense: "thing you can TASTE",   icon: "👅" },
-    ],
-  },
-};
+// ─── Breathing patterns ────────────────────────────────────────────────────────
+const BREATHING_PATTERNS = [
+  { id: "box",      label: "Caja (4-4-4-4)",   inhale: 4, holdIn: 4, exhale: 4, holdOut: 4 },
+  { id: "478",      label: "4-7-8 Relajante",  inhale: 4, holdIn: 7, exhale: 8, holdOut: 0 },
+  { id: "coherent", label: "Coherente (5-5)",   inhale: 5, holdIn: 0, exhale: 5, holdOut: 0 },
+];
 
-// ── Respiración en caja ───────────────────────────────────────────────────────
-const PHASES = ["inhale","hold","exhale","hold2"];
-const DURATIONS = { inhale:4, hold:4, exhale:6, hold2:2 };
+// ─── Grounding items ───────────────────────────────────────────────────────────
+const GROUNDING_STEPS = [
+  { count: 5, sense: "VER",    emoji: "👁️",  prompt: "Nombrá 5 cosas que podés VER ahora mismo" },
+  { count: 4, sense: "TOCAR",  emoji: "✋",  prompt: "Nombrá 4 cosas que podés TOCAR o sentir físicamente" },
+  { count: 3, sense: "OÍR",    emoji: "👂",  prompt: "Nombrá 3 cosas que podés OÍR en este momento" },
+  { count: 2, sense: "OLER",   emoji: "👃",  prompt: "Nombrá 2 cosas que podés OLER (o que te gustan)" },
+  { count: 1, sense: "GUSTAR", emoji: "👅",  prompt: "Nombrá 1 cosa que podés SABOREAR o que te encanta comer" },
+];
 
-function BreathingSection({ t, voiceKey, voiceEnabled }) {
-  const [running,  setRunning]  = useState(false);
-  const [phase,    setPhase]    = useState("ready");
-  const [count,    setCount]    = useState(0);
-  const [cycles,   setCycles]   = useState(0);
-  const timerRef = useRef(null);
-  const { speak } = useVoice(voiceKey, voiceEnabled);
+// ─── Breathing component ───────────────────────────────────────────────────────
+function BreathingTab({ t, voiceEnabled, voiceKey }) {
+  const [patternId, setPatternId] = useState("box");
+  const [running, setRunning]     = useState(false);
+  const [phase, setPhase]         = useState("inhale");
+  const [count, setCount]         = useState(0);
+  const [cycle, setCycle]         = useState(0);
+  const intervalRef               = useRef(null);
+  const utterRef                  = useRef(null);
 
-  const phaseLabel = { inhale: t.inhale, hold: t.hold, exhale: t.exhale, hold2: t.hold, ready: t.ready };
-  const phaseColor = { inhale:"#6366f1", hold:"#8b5cf6", exhale:"#06b6d4", hold2:"#8b5cf6", ready:"#64748b" };
+  const pattern = BREATHING_PATTERNS.find((p) => p.id === patternId);
+
+  const PHASES = [
+    { key: "inhale",  label: "Inhalá",   duration: pattern.inhale },
+    { key: "holdIn",  label: "Sostené",  duration: pattern.holdIn },
+    { key: "exhale",  label: "Exhalá",   duration: pattern.exhale },
+    { key: "holdOut", label: "Descansá", duration: pattern.holdOut },
+  ].filter((p) => p.duration > 0);
+
+  const speak = (text) => {
+    if (!voiceEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = voiceKey || "es-ES";
+    u.rate = 0.85;
+    utterRef.current = u;
+    window.speechSynthesis.speak(u);
+  };
 
   useEffect(() => {
     if (!running) return;
-    let pIdx = 0, seconds = 0;
-    setPhase(PHASES[0]);
-    setCount(DURATIONS[PHASES[0]]);
-    if (voiceEnabled) speak(t.inhale);
+    let phaseIdx = 0;
+    let remaining = PHASES[0].duration;
+    setPhase(PHASES[0].key);
+    setCount(PHASES[0].duration);
+    speak(PHASES[0].label);
 
-    timerRef.current = setInterval(() => {
-      seconds++;
-      const dur = DURATIONS[PHASES[pIdx]];
-      const rem = dur - (seconds % dur === 0 ? dur : seconds % dur);
-      setCount(rem);
-
-      if (seconds % dur === 0) {
-        pIdx = (pIdx + 1) % PHASES.length;
-        if (pIdx === 0) setCycles(c => c + 1);
-        setPhase(PHASES[pIdx]);
-        if (voiceEnabled) speak(phaseLabel[PHASES[pIdx]]);
+    intervalRef.current = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        phaseIdx = (phaseIdx + 1) % PHASES.length;
+        if (phaseIdx === 0) setCycle((c) => c + 1);
+        remaining = PHASES[phaseIdx].duration;
+        setPhase(PHASES[phaseIdx].key);
+        speak(PHASES[phaseIdx].label);
       }
+      setCount(remaining);
     }, 1000);
-    return () => clearInterval(timerRef.current);
-  }, [running]);
 
-  const toggle = () => {
-    if (running) {
-      clearInterval(timerRef.current);
-      setRunning(false);
-      setPhase("ready");
-      setCount(0);
-    } else {
-      setCycles(0);
-      setRunning(true);
-    }
+    return () => clearInterval(intervalRef.current);
+  }, [running, patternId]); // eslint-disable-line
+
+  const stop = () => {
+    setRunning(false);
+    clearInterval(intervalRef.current);
+    window.speechSynthesis?.cancel();
+    setPhase("inhale");
+    setCount(0);
+    setCycle(0);
   };
 
-  const color = phaseColor[phase] || "#6366f1";
+  const phaseLabel = PHASES.find((p) => p.key === phase)?.label || "Inhalá";
+  const phaseDuration = PHASES.find((p) => p.key === phase)?.duration || 4;
+  const progress = running ? ((phaseDuration - count) / phaseDuration) * 100 : 0;
+
+  const circleStyle = {
+    width: 180, height: 180, borderRadius: "50%",
+    border: "3px solid var(--accent)",
+    display: "flex", flexDirection: "column",
+    alignItems: "center", justifyContent: "center",
+    margin: "0 auto",
+    background: `conic-gradient(var(--accent) ${progress * 3.6}deg, var(--bg-card) 0deg)`,
+    transition: "background 0.8s linear",
+    boxShadow: running ? "0 0 40px rgba(99,102,241,0.3)" : "none",
+  };
 
   return (
-    <div style={{ textAlign: "center", padding: "16px 0" }}>
-      {/* Círculo animado */}
-      <div style={{ position: "relative", width: 120, height: 120, margin: "0 auto 16px" }}>
-        <div style={{
-          width: 120, height: 120, borderRadius: "50%",
-          border: `3px solid ${color}`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          flexDirection: "column", gap: 2,
-          background: `${color}15`,
-          transition: "all 0.8s ease",
-          animation: running ? (phase === "inhale" ? "breathe-in 4s ease-in-out" : phase === "exhale" ? "breathe-out 6s ease-in-out" : "none") : "none",
-        }}>
-          <span style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontSize: 14, fontWeight: 700, color }}>
-            {phaseLabel[phase]}
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* Pattern selector */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {BREATHING_PATTERNS.map((p) => (
+          <button key={p.id} onClick={() => { if (!running) setPatternId(p.id); }}
+            style={{
+              padding: "6px 14px", borderRadius: 8, fontSize: 12, cursor: running ? "not-allowed" : "pointer",
+              background: patternId === p.id ? "var(--accent)" : "var(--bg-card)",
+              color: patternId === p.id ? "white" : "var(--text-secondary)",
+              border: "1px solid var(--border)", opacity: running && patternId !== p.id ? 0.4 : 1,
+            }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Circle */}
+      <div style={circleStyle}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>
+          {running ? phaseLabel : "Listo"}
+        </span>
+        {running && (
+          <span style={{ fontSize: 36, fontWeight: 800, color: "var(--accent)", lineHeight: 1 }}>
+            {count}
           </span>
-          {running && <span style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontSize: 26, fontWeight: 800, color }}>{count}</span>}
-        </div>
-      </div>
-
-      {running && cycles > 0 && (
-        <p style={{ fontSize: 13, color: "#10b981", marginBottom: 12 }}>
-          {cycles} {cycles === 1 ? t.cycle : t.cycles}
-        </p>
-      )}
-
-      <button onClick={toggle} className="btn btn-primary" style={{ padding: "11px 28px" }}>
-        {running ? t.stop : t.start}
-      </button>
-
-      <style>{`
-        @keyframes breathe-in  { from{transform:scale(1)} to{transform:scale(1.15)} }
-        @keyframes breathe-out { from{transform:scale(1.15)} to{transform:scale(1)} }
-      `}</style>
-    </div>
-  );
-}
-
-// ── Grounding ─────────────────────────────────────────────────────────────────
-function GroundingSection({ t, voiceKey, voiceEnabled }) {
-  const [step, setStep] = useState(-1);
-  const [done, setDone] = useState(false);
-  const { speak } = useVoice(voiceKey, voiceEnabled);
-  const SENSES = t.senses;
-
-  const reset = () => { setStep(-1); setDone(false); };
-
-  const goNext = () => {
-    if (step < SENSES.length - 1) {
-      const next = step + 1;
-      setStep(next);
-      if (voiceEnabled) speak(`${SENSES[next].num} — ${SENSES[next].sense}`);
-    } else {
-      setDone(true);
-      if (voiceEnabled) speak(t.doneTitle);
-    }
-  };
-
-  if (step === -1 && !done) return (
-    <div style={{ textAlign: "center", padding: "16px 0" }}>
-      <p style={{ fontSize: 14, color: "#cbd5e1", lineHeight: 1.7, marginBottom: 20, maxWidth: 280, margin: "0 auto 20px" }}>
-        {t.groundPrompt} {SENSES[0]?.num} {SENSES[0]?.sense.toLowerCase()}...
-      </p>
-      <button className="btn btn-primary" style={{ padding: "11px 28px" }}
-        onClick={() => { setStep(0); if (voiceEnabled) speak(`${SENSES[0].num} — ${SENSES[0].sense}`); }}>
-        {t.start}
-      </button>
-    </div>
-  );
-
-  if (done) return (
-    <div style={{ textAlign: "center", padding: "16px 0" }}>
-      <div style={{ fontSize: 44, marginBottom: 12 }}>🌸</div>
-      <h4 style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{t.doneTitle}</h4>
-      <p style={{ color: "#cbd5e1", fontSize: 14, lineHeight: 1.7, marginBottom: 20, maxWidth: 260, margin: "0 auto 20px" }}>{t.doneDesc}</p>
-      <button className="btn btn-ghost" onClick={reset}>{t.again}</button>
-    </div>
-  );
-
-  return (
-    <div style={{ textAlign: "center", padding: "16px 0", animation: "fadeUp 0.3s ease" }}>
-      <div style={{ width: 72, height: 72, borderRadius: "50%", margin: "0 auto 14px", background: "var(--accent-soft,rgba(99,102,241,0.1))", border: "2px solid var(--accent,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>
-        {SENSES[step].icon}
-      </div>
-      <div style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontSize: 48, fontWeight: 800, color: "var(--accent,#6366f1)", marginBottom: 6 }}>{SENSES[step].num}</div>
-      <p style={{ fontSize: 16, color: "#cbd5e1", marginBottom: 24 }}>{SENSES[step].sense}</p>
-      <div style={{ display: "flex", gap: 10, justifyContent: "center", marginBottom: 20 }}>
-        {step > 0 && <button className="btn btn-ghost" onClick={() => setStep(s => s - 1)}>{t.back}</button>}
-        <button className="btn btn-primary" style={{ padding: "11px 24px" }} onClick={goNext}>
-          {step < SENSES.length - 1 ? t.next : t.done}
-        </button>
-      </div>
-      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-        {SENSES.map((_, i) => (
-          <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i <= step ? "var(--accent,#6366f1)" : "var(--border,rgba(255,255,255,0.1))", transition: "background 0.3s" }} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Componente principal ──────────────────────────────────────────────────────
-export default function Relief({ locale = "es", voiceKey = "es-MX", voiceEnabled = false, onNavigateChat }) {
-  const [tab, setTab] = useState("breathe"); // "breathe" | "ground"
-  const t = TX[locale] || TX.es;
-
-  const tabs = [
-    { id: "breathe", label: `🫁 ${t.breatheTitle}` },
-    { id: "ground",  label: `🎯 ${t.groundTitle}` },
-  ];
-
-  return (
-    <div style={{ padding: "24px 0", animation: "fadeUp 0.4s ease" }}>
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
-          🆘 {t.title}
-        </h2>
-        <p style={{ color: "#94a3b8", fontSize: 14, lineHeight: 1.6 }}>{t.sub}</p>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "var(--bg-secondary,rgba(255,255,255,0.04))", borderRadius: 12, padding: 4 }}>
-        {tabs.map(tab_ => (
-          <button key={tab_.id} onClick={() => setTab(tab_.id)} style={{
-            flex: 1, padding: "10px 8px", borderRadius: 9, border: "none", cursor: "pointer",
-            fontFamily: "var(--font-main,'Sora',sans-serif)", fontSize: 13, fontWeight: 500,
-            background: tab === tab_.id ? "var(--accent,#6366f1)" : "transparent",
-            color: tab === tab_.id ? "white" : "var(--text-muted,#64748b)",
-            transition: "all 0.2s",
-          }}>{tab_.label}</button>
-        ))}
-      </div>
-
-      {/* Contenido del tab */}
-      <div className="glass" style={{ padding: "20px 16px", marginBottom: 16, minHeight: 220 }}>
-        {tab === "breathe" ? (
-          <>
-            <p style={{ fontSize: 13, color: "#94a3b8", textAlign: "center", marginBottom: 16 }}>{t.breatheSub}</p>
-            <BreathingSection t={t} voiceKey={voiceKey} voiceEnabled={voiceEnabled} />
-          </>
-        ) : (
-          <>
-            <p style={{ fontSize: 13, color: "#94a3b8", textAlign: "center", marginBottom: 16 }}>{t.groundSub}</p>
-            <GroundingSection t={t} voiceKey={voiceKey} voiceEnabled={voiceEnabled} />
-          </>
+        )}
+        {cycle > 0 && (
+          <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            ciclo {cycle}
+          </span>
         )}
       </div>
 
-      {/* Botón al chat */}
-      <button onClick={onNavigateChat} style={{
-        width: "100%", padding: "16px 20px", borderRadius: 16, cursor: "pointer",
-        background: "linear-gradient(135deg,rgba(99,102,241,0.12),rgba(139,92,246,0.08))",
-        border: "1px solid rgba(99,102,241,0.25)", display: "flex", alignItems: "center",
-        justifyContent: "space-between", transition: "all .2s",
-      }}
-        onMouseEnter={e => e.currentTarget.style.background = "linear-gradient(135deg,rgba(99,102,241,0.2),rgba(139,92,246,0.15))"}
-        onMouseLeave={e => e.currentTarget.style.background = "linear-gradient(135deg,rgba(99,102,241,0.12),rgba(139,92,246,0.08))"}>
-        <div style={{ textAlign: "left" }}>
-          <p style={{ fontFamily: "var(--font-main,'Sora',sans-serif)", fontWeight: 700, fontSize: 14, color: "#f0f1fa", marginBottom: 3 }}>
-            💬 {t.chatTitle}
-          </p>
-          <p style={{ fontSize: 12, color: "var(--accent,#6366f1)" }}>{t.chatSub}</p>
+      {/* Controls */}
+      <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+        {!running ? (
+          <button className="btn btn-primary" onClick={() => setRunning(true)}>
+            ▶ Comenzar
+          </button>
+        ) : (
+          <button className="btn btn-ghost" onClick={stop}>
+            ⏹ Detener
+          </button>
+        )}
+      </div>
+
+      <p style={{ textAlign: "center", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+        Respirá siguiendo el ritmo. Después de 3-5 ciclos vas a sentir la diferencia.
+      </p>
+    </div>
+  );
+}
+
+// ─── Grounding component ───────────────────────────────────────────────────────
+function GroundingTab({ t, voiceEnabled, voiceKey }) {
+  const [stepIdx, setStepIdx]   = useState(0);
+  const [items, setItems]       = useState([]);
+  const [input, setInput]       = useState("");
+  const [done, setDone]         = useState(false);
+  const inputRef                = useRef(null);
+
+  const step = GROUNDING_STEPS[stepIdx];
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    if (voiceEnabled && typeof window !== "undefined" && window.speechSynthesis) {
+      const u = new SpeechSynthesisUtterance(step.prompt);
+      u.lang = voiceKey || "es-ES";
+      u.rate = 0.9;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    }
+  }, [stepIdx]); // eslint-disable-line
+
+  const addItem = () => {
+    const val = input.trim();
+    if (!val) return;
+    const next = [...items, val];
+    setItems(next);
+    setInput("");
+    if (next.length >= step.count) {
+      setTimeout(() => {
+        if (stepIdx < GROUNDING_STEPS.length - 1) {
+          setStepIdx((i) => i + 1);
+          setItems([]);
+        } else {
+          setDone(true);
+        }
+      }, 400);
+    }
+  };
+
+  const reset = () => {
+    setStepIdx(0); setItems([]); setInput(""); setDone(false);
+  };
+
+  if (done) {
+    return (
+      <div style={{ textAlign: "center", padding: "40px 0" }}>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>🌟</div>
+        <h3 style={{ color: "var(--text-primary)", marginBottom: 8 }}>¡Bien hecho!</h3>
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+          Completaste el ejercicio 5-4-3-2-1. Tu mente volvió al presente.
+        </p>
+        <button className="btn btn-primary" onClick={reset}>Repetir ejercicio</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Progress dots */}
+      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+        {GROUNDING_STEPS.map((s, i) => (
+          <div key={i} style={{
+            width: 10, height: 10, borderRadius: "50%",
+            background: i < stepIdx ? "var(--accent)" : i === stepIdx ? "var(--accent-2)" : "var(--border)",
+            transition: "background 0.3s",
+          }} />
+        ))}
+      </div>
+
+      {/* Prompt */}
+      <div style={{
+        background: "var(--bg-card)", borderRadius: 14, padding: "20px 22px",
+        border: "1px solid var(--border)", textAlign: "center",
+      }}>
+        <div style={{ fontSize: 36, marginBottom: 8 }}>{step.emoji}</div>
+        <h3 style={{ color: "var(--text-primary)", fontSize: 16, marginBottom: 4 }}>
+          {step.prompt}
+        </h3>
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+          {items.length}/{step.count} anotados
+        </p>
+      </div>
+
+      {/* Items so far */}
+      {items.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {items.map((item, i) => (
+            <span key={i} style={{
+              background: "var(--bg-card-hover)", border: "1px solid var(--border)",
+              borderRadius: 20, padding: "4px 12px", fontSize: 13, color: "var(--text-secondary)",
+            }}>
+              {item}
+            </span>
+          ))}
         </div>
-        <span style={{ fontSize: 20, color: "var(--accent,#6366f1)" }}>›</span>
-      </button>
+      )}
+
+      {/* Input */}
+      <div style={{ display: "flex", gap: 10 }}>
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addItem()}
+          placeholder={`Escribí algo que podés ${step.sense.toLowerCase()}…`}
+          style={{
+            flex: 1, padding: "11px 14px", borderRadius: 10, fontSize: 14,
+            background: "var(--bg-card)", border: "1px solid var(--border)",
+            color: "var(--text-primary)", outline: "none",
+          }}
+        />
+        <button className="btn btn-primary" onClick={addItem} style={{ padding: "11px 18px" }}>
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Relief page ──────────────────────────────────────────────────────────
+export default function Relief({ t, locale, voiceKey, voiceEnabled }) {
+  const [tab, setTab] = useState("breathing");
+
+  return (
+    <div style={{ paddingBottom: 40 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
+          🫁 Alivio inmediato
+        </h2>
+        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>
+          Ejercicios para calmar el sistema nervioso ahora mismo
+        </p>
+      </div>
+
+      {/* Tab switcher */}
+      <div style={{
+        display: "flex", gap: 4, background: "var(--bg-card)", borderRadius: 12,
+        padding: 4, marginBottom: 28, border: "1px solid var(--border)",
+      }}>
+        {[
+          { id: "breathing", label: "💨 Respiración" },
+          { id: "grounding", label: "🌍 Grounding 5-4-3-2-1" },
+        ].map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            flex: 1, padding: "9px 0", borderRadius: 9, fontSize: 13, fontWeight: 500,
+            cursor: "pointer", border: "none", transition: "all .2s",
+            background: tab === t.id ? "var(--accent)" : "transparent",
+            color: tab === t.id ? "white" : "var(--text-secondary)",
+          }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {tab === "breathing"
+        ? <BreathingTab voiceEnabled={voiceEnabled} voiceKey={voiceKey} />
+        : <GroundingTab voiceEnabled={voiceEnabled} voiceKey={voiceKey} />
+      }
     </div>
   );
 }
