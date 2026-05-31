@@ -254,6 +254,27 @@ No titles, no markdown, no bullet points.`,
   return prompt;
 }
 
+// ── Rate limiting simple en memoria (por UID) ─────────────────────────────────
+// Protege contra abuso de API y costos inesperados
+const rateLimitMap = new Map(); // uid → { count, resetAt }
+const RATE_LIMIT_MAX      = 40;  // máx requests por hora por usuario
+const RATE_LIMIT_WINDOW   = 60 * 60 * 1000; // 1 hora en ms
+const MAX_HISTORY_FREE    = 6;   // mensajes de historial para usuarios free (ahorra tokens)
+const MAX_HISTORY_PREMIUM = 14;  // premium recibe más contexto
+
+function checkRateLimit(uid) {
+  if (!uid) return false; // sin UID se maneja aparte
+  const now = Date.now();
+  const entry = rateLimitMap.get(uid);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(uid, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true; // ok
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false; // bloqueado
+  entry.count++;
+  return true; // ok
+}
+
 // ── Selección de modelo según plan ───────────────────────────────────────────
 // Opus: $15/$75 por MTok — solo premium y primera sesión (vale la inversión)
 // Haiku: $0.80/$4 por MTok — usuarios gratuitos día 2+ (100x más barato)
@@ -278,7 +299,13 @@ export async function POST(req) {
       return NextResponse.json({ error: "invalid_json_body" }, { status: 400 });
     }
 
-    const { messages, userName, locale: clientLocale, isOpening, isReturn, isLetter, isPremium, isFirstSession } = body;
+    const { messages, userName, locale: clientLocale, isOpening, isReturn, isLetter, isPremium, isFirstSession, uid: clientUid } = body;
+
+    // ── Rate limit check ─────────────────────────────────────────────────────
+    const uid = clientUid || null;
+    if (!checkRateLimit(uid || "anonymous")) {
+      return NextResponse.json({ error: "rate_limit" }, { status: 429 });
+    }
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "no_valid_messages" }, { status: 400 });
@@ -434,10 +461,12 @@ Sin markdown, sin títulos. Solo texto cálido y directo. Usá el nombre siempre
       content: m.content.trim(),
     }));
 
+    // Limitar historial según plan — ahorra tokens y dinero
+    const historyLimit = isPremium ? MAX_HISTORY_PREMIUM : MAX_HISTORY_FREE;
     const firstUserIndex = anthropicMessages.findIndex((m) => m.role === "user");
-    const trimmedMessages = firstUserIndex >= 0
+    const trimmedMessages = (firstUserIndex >= 0
       ? anthropicMessages.slice(firstUserIndex)
-      : anthropicMessages;
+      : anthropicMessages).slice(-historyLimit);
 
     const response = await anthropic.messages.create({
       model: selectModel(isPremium, isFirstSession),
