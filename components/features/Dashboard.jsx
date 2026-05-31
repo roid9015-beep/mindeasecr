@@ -92,21 +92,21 @@ export default function Dashboard({ t, locale, user, onNavigate }) {
           padding: "18px 24px",
           borderRadius: 18,
           border: "none",
-          background: "linear-gradient(135deg, #ef4444, #dc2626)",
+          background: "linear-gradient(135deg, #7f1d1d, #9f1239)",
           cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
-          boxShadow: "0 6px 28px rgba(239,68,68,0.4)",
+          boxShadow: "0 6px 28px rgba(159,18,57,0.35)",
           transition: "all .2s",
         }}
-        onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 36px rgba(239,68,68,0.55)"; }}
-        onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 6px 28px rgba(239,68,68,0.4)"; }}
+        onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 36px rgba(159,18,57,0.5)"; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 6px 28px rgba(159,18,57,0.35)"; }}
       >
-        <span style={{ fontSize: 28 }}>🆘</span>
+        <span style={{ fontSize: 28 }}>❓</span>
         <div style={{ textAlign: "left" }}>
           <p style={{ fontFamily: "var(--font-main)", fontWeight: 800, fontSize: 18, color: "white", letterSpacing: "-0.3px" }}>
-            Necesito alivio ahora
+            ¿Necesitás alivio ahora?
           </p>
-          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 2 }}>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 2 }}>
             Respiración guiada · Ejercicio de anclaje
           </p>
         </div>
