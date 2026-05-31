@@ -5,10 +5,9 @@ export default function BottomNav({ t, page, setPage }) {
   const items = [
     { id: "dashboard", icon: NAV_ICONS.dashboard, label: t.homeLabel },
     { id: "chat",      icon: NAV_ICONS.chat,       label: t.talkLabel },
-    { id: "breathing", icon: NAV_ICONS.breathing,  label: t.breatheLabel },
-    { id: "grounding", icon: NAV_ICONS.grounding,  label: t.groundLabel },
+    { id: "relief",    icon: "🆘",                 label: "SOS" },
     { id: "insights",  icon: NAV_ICONS.insights,   label: t.insightsLabel },
-    { id: "settings",  icon: NAV_ICONS.settings,   label: t.settingsLabel },
+    { id: "settings",  icon: "👤",                 label: "Perfil" },
   ];
 
   return (
