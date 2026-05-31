@@ -138,6 +138,7 @@ export default function AIChat({ user, locale = "es", voiceEnabled = false, voic
         locale:         localeRef.current,
         isPremium:      isPremium,
         isFirstSession: firstSession && fsCreditsUsed < FIRST_SESSION_MAX,
+        uid:            auth.currentUser?.uid || user?.uid || null,
       }),
     });
     let data;
