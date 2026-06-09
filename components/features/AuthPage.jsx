@@ -89,7 +89,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
       if (err.code === "auth/popup-closed-by-user") {
         setError("Cerraste la ventana de Google. Intenta de nuevo.");
       } else {
-        setError("Error al iniciar con Google. Intenta de nuevo.");
+        setError(err.code + ": " + err.message);
       }
     } finally {
       setLoading(false);
