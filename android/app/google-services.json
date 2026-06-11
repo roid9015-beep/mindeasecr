@@ -1,0 +1,56 @@
+{
+  "project_info": {
+    "project_number": "804502051538",
+    "firebase_url": "https://mindeasecr-default-rtdb.firebaseio.com",
+    "project_id": "mindeasecr",
+    "storage_bucket": "mindeasecr.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:804502051538:android:146498fce4563ed4322b0b",
+        "android_client_info": {
+          "package_name": "com.mindease.cr"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "804502051538-hu603qr5gnoil4itnd2kf6m4m8ru3q2u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mindease.cr",
+            "certificate_hash": "879183df7ca2e6a0b80627c2610be2b123891593"
+          }
+        },
+        {
+          "client_id": "804502051538-v6o4qn6o3pdp8ppts66mdr3h1lbcf31v.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mindease.cr",
+            "certificate_hash": "2ca5a34ca2faa24b6bd44f768923c92312c97b46"
+          }
+        },
+        {
+          "client_id": "804502051538-k0tumg04fd934a5uu6pjjejssdln1atb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBH53yJrDk8T7FW2C0JZtuB5vbfx7qvwkE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "804502051538-k0tumg04fd934a5uu6pjjejssdln1atb.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

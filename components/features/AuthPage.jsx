@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { saveTermsAcceptance } from "@/lib/firestore";
 import BackgroundOrbs from "@/components/ui/BackgroundOrbs";
@@ -72,10 +72,24 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
     setError("");
     setLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      const result       = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
+      let firebaseUser;
+      const { Capacitor } = await import("@capacitor/core");
+
+      if (Capacitor.isNativePlatform()) {
+        // Flujo nativo (Android/iOS): evita el popup de Google bloqueado en WebView
+        const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+        const result = await FirebaseAuthentication.signInWithGoogle();
+        const credential = GoogleAuthProvider.credential(result.credential?.idToken);
+        const userCredential = await signInWithCredential(auth, credential);
+        firebaseUser = userCredential.user;
+      } else {
+        // Flujo web normal
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: "select_account" });
+        const result = await signInWithPopup(auth, provider);
+        firebaseUser = result.user;
+      }
+
       if (mode === "signup") {
         await saveTermsAcceptance(firebaseUser.uid, locale);
       }
@@ -89,7 +103,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
       if (err.code === "auth/popup-closed-by-user") {
         setError("Cerraste la ventana de Google. Intenta de nuevo.");
       } else {
-        setError("Error al iniciar con Google. Intenta de nuevo.");
+        setError("Error al iniciar con Google: " + (err.code || err.message));
       }
     } finally {
       setLoading(false);
