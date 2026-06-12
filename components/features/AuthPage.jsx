@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { signInWithPopup, GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
+import { useState, useEffect } from "react";
+import { signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { saveTermsAcceptance } from "@/lib/firestore";
 import BackgroundOrbs from "@/components/ui/BackgroundOrbs";
@@ -27,6 +27,41 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
     pt: { text: "Li e aceito os", link: "Termos de Uso e Política de Privacidade", required: "Você deve aceitar os termos para continuar." },
     en: { text: "I have read and agree to the", link: "Terms of Use and Privacy Policy", required: "You must accept the terms to continue." },
   }[locale] || { text: "He leído y acepto los", link: "Términos de Uso", required: "Debes aceptar los términos." };
+
+  // ── Procesar resultado de login con Google vía redirect (web/PWA) ────────
+  // Los popups de Google son bloqueados por la mayoría de navegadores móviles,
+  // por lo que el flujo web usa signInWithRedirect. Al volver del redirect,
+  // recogemos aquí el resultado (o el error) para mostrarlo/aplicarlo.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        if (Capacitor.isNativePlatform()) return;
+
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          const firebaseUser = result.user;
+          const wasSignup = sessionStorage.getItem("mindease_google_signup") === "1";
+          const savedLocale = sessionStorage.getItem("mindease_google_locale") || locale;
+          if (wasSignup) {
+            await saveTermsAcceptance(firebaseUser.uid, savedLocale);
+          }
+          sessionStorage.removeItem("mindease_google_signup");
+          sessionStorage.removeItem("mindease_google_locale");
+          onLogin({
+            name:      firebaseUser.displayName || firebaseUser.email.split("@")[0],
+            email:     firebaseUser.email,
+            uid:       firebaseUser.uid,
+            isPremium: false,
+          });
+        }
+      } catch (err) {
+        sessionStorage.removeItem("mindease_google_signup");
+        sessionStorage.removeItem("mindease_google_locale");
+        setError("Error al iniciar con Google: " + (err.code || err.message));
+      }
+    })();
+  }, []); // eslint-disable-line
 
   // ── Persistencia de sesión (Recordarme) ──────────────────────────────────
   const applyPersistence = async () => {
@@ -116,11 +151,17 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
         const userCredential = await signInWithCredential(auth, credential);
         firebaseUser = userCredential.user;
       } else {
-        // Flujo web normal
+        // Flujo web/PWA: signInWithRedirect (los popups son bloqueados por la
+        // mayoría de navegadores móviles). El resultado se procesa en el
+        // useEffect de arriba cuando la página vuelve a cargar.
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: "select_account" });
-        const result = await signInWithPopup(auth, provider);
-        firebaseUser = result.user;
+        try {
+          sessionStorage.setItem("mindease_google_signup", mode === "signup" ? "1" : "0");
+          sessionStorage.setItem("mindease_google_locale", locale);
+        } catch {}
+        await signInWithRedirect(auth, provider);
+        return;
       }
 
       if (mode === "signup") {
