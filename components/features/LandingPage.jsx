@@ -17,15 +17,15 @@ export default function LandingPage({ t, locale, langInfo, onChangeLocale, onGet
         {/* ── Header ── */}
         <header style={{
           display:"flex", alignItems:"center", justifyContent:"space-between",
-          padding:"20px 32px", borderBottom:"1px solid var(--border)",
+          padding:"16px clamp(16px, 5vw, 32px)", borderBottom:"1px solid var(--border)",
           background:"rgba(10,11,18,0.85)", backdropFilter:"blur(20px)",
-          position:"sticky", top:0, zIndex:50, flexWrap:"wrap", gap:12,
+          position:"sticky", top:0, zIndex:50, flexWrap:"wrap", gap:10,
         }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#6366f1,#06b6d4)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🌿</div>
             <span className="logo-text" style={{ fontSize:20 }}>{t.appName}</span>
           </div>
-          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", justifyContent:"flex-end" }}>
             <LanguageBadge langInfo={langInfo} onChangeLocale={onChangeLocale} />
             <button className="btn btn-ghost" style={{ padding:"8px 18px" }} onClick={onGetStarted}>{t.signIn}</button>
             <button className="btn btn-primary" style={{ padding:"8px 18px" }} onClick={onGetStarted}>{t.startFree} →</button>
@@ -187,8 +187,4 @@ export default function LandingPage({ t, locale, langInfo, onChangeLocale, onGet
         .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(99,102,241,.45)}
         .btn-ghost{background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border)}
         .btn-ghost:hover{background:var(--bg-card-hover);color:var(--text-primary);border-color:var(--border-hover)}
-        .btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
-      `}</style>
-    </div>
-  );
-}
+        .btn:disabled{opacity:.5;cursor:not-allowed;tran
