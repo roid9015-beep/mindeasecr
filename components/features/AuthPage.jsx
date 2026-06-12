@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { signInWithPopup, GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { saveTermsAcceptance } from "@/lib/firestore";
 import BackgroundOrbs from "@/components/ui/BackgroundOrbs";
@@ -17,6 +17,8 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
   const [error,         setError]        = useState("");
   const [termsAccepted, setTermsAccepted]= useState(false);
   const [showTerms,     setShowTerms]    = useState(false);
+  const [rememberMe,    setRememberMe]   = useState(true);
+  const [resetSent,     setResetSent]    = useState(false);
 
   const locale = langInfo?.locale || "es";
 
@@ -26,6 +28,35 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
     en: { text: "I have read and agree to the", link: "Terms of Use and Privacy Policy", required: "You must accept the terms to continue." },
   }[locale] || { text: "He leído y acepto los", link: "Términos de Uso", required: "Debes aceptar los términos." };
 
+  // ── Persistencia de sesión (Recordarme) ──────────────────────────────────
+  const applyPersistence = async () => {
+    try {
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+    } catch {
+      // Si falla (p.ej. plataforma nativa sin soporte), seguimos con el valor por defecto
+    }
+  };
+
+  // ── Restablecer contraseña ───────────────────────────────────────────────
+  const resetPassword = async () => {
+    if (!email) return setError(t.enterEmailFirst);
+    setError("");
+    setResetSent(false);
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetSent(true);
+    } catch (err) {
+      const msg = {
+        "auth/user-not-found": "No existe una cuenta con ese correo.",
+        "auth/invalid-email":  "El correo no es válido.",
+      };
+      setError(msg[err.code] || "No se pudo enviar el correo. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ── Login / Registro con email ─────────────────────────────────────────────
   const submit = async () => {
     if (!email || !password) return setError(t.fillFields);
@@ -34,6 +65,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
     setError("");
     setLoading(true);
     try {
+      await applyPersistence();
       let firebaseUser;
       if (mode === "login") {
         const result = await signInWithEmailAndPassword(auth, email, password);
@@ -72,6 +104,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
     setError("");
     setLoading(true);
     try {
+      await applyPersistence();
       let firebaseUser;
       const { Capacitor } = await import("@capacitor/core");
 
@@ -134,18 +167,57 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
 
         <div className="glass" style={{ padding:"28px clamp(16px, 5vw, 32px)" }}>
           {/* Tabs */}
-          <div style={{ display:"flex", gap:4, marginBottom:24, background:"var(--bg-secondary)", borderRadius:10, padding:4 }}>
-            {[["login", t.signInBtn], ["signup", t.createAccount]].map(([m, label]) => (
-              <button key={m} onClick={() => { setMode(m); setError(""); setTermsAccepted(false); }} style={{
-                flex:1, padding:"8px", borderRadius:7, border:"none", cursor:"pointer",
-                fontFamily:"var(--font-main)", fontSize:13, fontWeight:500,
-                background: mode === m ? "var(--accent)" : "transparent",
-                color:      mode === m ? "white" : "var(--text-muted)",
-                transition:"all 0.2s",
-              }}>{label}</button>
-            ))}
-          </div>
+          {mode !== "reset" && (
+            <div style={{ display:"flex", gap:4, marginBottom:24, background:"var(--bg-secondary)", borderRadius:10, padding:4 }}>
+              {[["login", t.signInBtn], ["signup", t.createAccount]].map(([m, label]) => (
+                <button key={m} onClick={() => { setMode(m); setError(""); setTermsAccepted(false); }} style={{
+                  flex:1, padding:"8px", borderRadius:7, border:"none", cursor:"pointer",
+                  fontFamily:"var(--font-main)", fontSize:13, fontWeight:500,
+                  background: mode === m ? "var(--accent)" : "transparent",
+                  color:      mode === m ? "white" : "var(--text-muted)",
+                  transition:"all 0.2s",
+                }}>{label}</button>
+              ))}
+            </div>
+          )}
 
+          {mode === "reset" ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
+            <div style={{ textAlign:"center", marginBottom:4 }}>
+              <h2 style={{ fontSize:18, marginBottom:6, fontFamily:"var(--font-main)" }}>{t.resetPasswordTitle}</h2>
+              <p style={{ color:"var(--text-muted)", fontSize:13 }}>{t.resetPasswordDesc}</p>
+            </div>
+
+            <div>
+              <label style={{ display:"block", fontSize:11, color:"var(--text-muted)", marginBottom:5, fontFamily:"var(--font-main)" }}>{t.emailLabel}</label>
+              <input className="custom-input" type="email" placeholder={t.emailPlaceholder} value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && resetPassword()} />
+            </div>
+
+            {error && (
+              <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:8, padding:"9px 13px", fontSize:13, color:"#f87171" }}>
+                {error}
+              </div>
+            )}
+
+            {resetSent && (
+              <div style={{ background:"rgba(34,197,94,0.1)", border:"1px solid rgba(34,197,94,0.2)", borderRadius:8, padding:"9px 13px", fontSize:13, color:"#4ade80" }}>
+                {t.resetEmailSent}
+              </div>
+            )}
+
+            <button className="btn btn-primary" style={{ width:"100%", marginTop:4, padding:"13px" }}
+              onClick={resetPassword} disabled={loading}>
+              {loading ? <Spinner size={18} /> : t.sendResetLink}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setMode("login"); setError(""); setResetSent(false); }}
+              style={{ background:"none", border:"none", color:"var(--accent,#6366f1)", fontSize:13, cursor:"pointer", padding:0, textDecoration:"underline", fontFamily:"inherit", textAlign:"center" }}>
+              {t.backToLogin}
+            </button>
+          </div>
+          ) : (
           <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
             {mode === "signup" && (
               <div>
@@ -161,6 +233,27 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
               <label style={{ display:"block", fontSize:11, color:"var(--text-muted)", marginBottom:5, fontFamily:"var(--font-main)" }}>{t.passwordLabel}</label>
               <input className="custom-input" type="password" placeholder={t.passwordPlaceholder} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} />
             </div>
+
+            {/* Recordarme + Olvidé mi contraseña — solo en login */}
+            {mode === "login" && (
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:-4 }}>
+                <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--text-secondary)", cursor:"pointer", fontFamily:"var(--font-main)" }}>
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                    style={{ width:14, height:14, accentColor:"var(--accent,#6366f1)", cursor:"pointer" }}
+                  />
+                  {t.rememberMe}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setMode("reset"); setError(""); setResetSent(false); }}
+                  style={{ background:"none", border:"none", color:"var(--accent,#6366f1)", fontSize:12, cursor:"pointer", padding:0, textDecoration:"underline", fontFamily:"inherit" }}>
+                  {t.forgotPassword}
+                </button>
+              </div>
+            )}
 
             {/* Checkbox T&C — solo en registro */}
             {mode === "signup" && (
@@ -207,6 +300,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
               {loading ? <Spinner size={18} /> : <>{`🔵 ${t.googleBtn}`}</>}
             </button>
           </div>
+          )}
         </div>
 
         <p style={{ textAlign:"center", fontSize:11, color:"var(--text-muted)", marginTop:18, lineHeight:1.6 }}>
