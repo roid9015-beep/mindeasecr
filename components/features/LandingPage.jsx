@@ -187,4 +187,8 @@ export default function LandingPage({ t, locale, langInfo, onChangeLocale, onGet
         .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(99,102,241,.45)}
         .btn-ghost{background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border)}
         .btn-ghost:hover{background:var(--bg-card-hover);color:var(--text-primary);border-color:var(--border-hover)}
-        .btn:disabled{opacity:.5;cursor:not-allowed;tran
+        .btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
+      `}</style>
+    </div>
+  );
+}

@@ -279,7 +279,7 @@ function checkRateLimit(uid) {
 // Opus: $15/$75 por MTok — solo premium y primera sesión (vale la inversión)
 // Haiku: $0.80/$4 por MTok — usuarios gratuitos día 2+ (100x más barato)
 function selectModel(isPremium, isFirstSession) {
-  if (isPremium || isFirstSession) return "claude-opus-4-5";
+  if (isPremium || isFirstSession) return "claude-opus-4-6";
   return "claude-haiku-4-5-20251001";
 }
 function selectMaxTokens(isPremium, isFirstSession, type) {
@@ -428,7 +428,7 @@ Sin markdown, sin títulos. Solo texto cálido y directo. Usá el nombre siempre
       const systemPrompt = buildSystemPrompt(locale, name, true);
       // Apertura siempre con Opus — es la primera impresión, vale la inversión
       const response = await anthropic.messages.create({
-        model: "claude-opus-4-5",
+        model: "claude-opus-4-6",
         max_tokens: 800,
         system: systemPrompt,
         messages: [{ role: "user", content: "Inicia la sesión terapéutica ahora." }],
