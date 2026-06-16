@@ -113,9 +113,11 @@ export function useVoice(voiceKey, enabled) {
     };
 
     checkVoices();
-    window.speechSynthesis.onvoiceschanged = () => {
-      checkVoices();
-    };
+    if (window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        checkVoices();
+      };
+    }
   }, []);
 
   const speak = useCallback((text) => {
