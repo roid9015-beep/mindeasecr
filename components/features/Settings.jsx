@@ -147,7 +147,7 @@ export default function Settings({ t, user, onLogout, onUpgrade, onShowTerms,
     ]},
     { title: t.legalLabel, items: [
       { icon:"📋", label: t.termsOfService, action: onShowTerms },
-      { icon:"📜", label: t.privacyPolicy,  action: () => alert(t.privacyPolicyText) },
+      { icon:"📜", label: t.privacyPolicy,  action: () => window.open("https://mindeasecr.vercel.app/privacy", "_blank") },
       { icon:"⚕️", label: t.medDisclaimer,  action: () => alert(t.medDisclaimerText) },
     ]},
   ];
@@ -199,7 +199,4 @@ export default function Settings({ t, user, onLogout, onUpgrade, onShowTerms,
 
       <button onClick={handleLogout} style={{ width:"100%", marginTop:8, padding:"12px 24px", borderRadius:"var(--radius-sm)", background:"rgba(239,68,68,0.12)", color:"var(--danger,#f87171)", border:"1px solid rgba(239,68,68,0.2)", fontFamily:"var(--font-main)", fontSize:14, fontWeight:500, cursor:"pointer", transition:"all .2s" }}>
         {t.signOut}
-      </button>
-    </div>
-  );
-}
+  
