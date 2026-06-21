@@ -52,7 +52,10 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
             name:      firebaseUser.displayName || firebaseUser.email.split("@")[0],
             email:     firebaseUser.email,
             uid:       firebaseUser.uid,
-            isPremium: false,
+            // isPremium NO se fija aquí: el listener onAuthStateChanged en
+            // MindEaseApp.jsx lo trae de Firestore poco después. Si lo
+            // forzamos a false aquí, gana la carrera y sobrescribe el valor
+            // real (bug que hacía que Premium nunca se reflejara en pantalla).
           });
         }
       } catch (err) {
@@ -116,7 +119,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
         name:      firebaseUser.displayName || name || email.split("@")[0],
         email:     firebaseUser.email,
         uid:       firebaseUser.uid,
-        isPremium: false,
+        // isPremium NO se fija aquí: ver nota arriba.
       });
     } catch (err) {
       const msg = {
@@ -171,7 +174,7 @@ export default function AuthPage({ t, langInfo, onChangeLocale, onLogin }) {
         name:      firebaseUser.displayName || firebaseUser.email.split("@")[0],
         email:     firebaseUser.email,
         uid:       firebaseUser.uid,
-        isPremium: false,
+        // isPremium NO se fija aquí: ver nota arriba.
       });
     } catch (err) {
       if (err.code === "auth/popup-closed-by-user") {
