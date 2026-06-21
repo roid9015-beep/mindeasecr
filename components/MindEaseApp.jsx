@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import { getTranslation } from "@/lib/i18n";
 import { detectRegion } from "@/lib/utils";
 import useAppStore from "@/store/useAppStore";
@@ -58,13 +59,23 @@ export default function MindEaseApp() {
 
   // ── Escuchar estado real de Firebase Auth ────────────────────────────────────
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Leer isPremium real desde Firestore (no solo memoria local).
+        // Sin esto, el estado Premium se perdía visualmente al cerrar y
+        // volver a abrir la app, aunque el usuario sí hubiera pagado.
+        let isPremium = false;
+        try {
+          const snap = await getDoc(doc(db, "users", firebaseUser.uid));
+          isPremium = snap.exists() ? !!snap.data().isPremium : false;
+        } catch {
+          isPremium = user?.isPremium || false; // fallback si Firestore falla
+        }
         setUser({
           name:      firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Usuario",
           email:     firebaseUser.email,
           uid:       firebaseUser.uid,
-          isPremium: user?.isPremium || false,
+          isPremium,
         });
         if (screen === "landing" || screen === "auth") {
           setScreen("app");
